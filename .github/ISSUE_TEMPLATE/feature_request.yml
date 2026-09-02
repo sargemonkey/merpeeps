@@ -1,0 +1,37 @@
+name: Feature request
+description: Something you want it to do that it doesn't
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: >
+        The problem rather than the solution, if you can. Knowing what you were
+        attempting often turns up a better answer than the one that prompted the
+        request.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you had in mind
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead, and why it fell short
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Does this change the file format?
+      description: >
+        Anything stored in the `x-merpeeps` block affects every reader of it, not
+        just this editor — see SPEC.md.
+      options:
+        - label: This would need a change to the stored format
+        - label: I've read SPEC.md

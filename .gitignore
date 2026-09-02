@@ -1,0 +1,18 @@
+# .NET
+bin/
+obj/
+*.user
+TestResults/
+
+# Node
+node_modules/
+oracle/oracle-report.json
+
+# Tooling artifacts
+.playwright-mcp/
+*.trx
+
+# Package output
+artifacts/
+*.tgz
+*.nupkg

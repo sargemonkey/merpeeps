@@ -1,0 +1,308 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  inner-loop:
+    name: Inner loop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        # Checkout normalises line endings per platform, so Windows gets CRLF
+        # and Linux gets LF from the same repository. That is exactly the
+        # difference the cross-platform tests exist to catch, so leave it alone
+        # rather than forcing consistency here.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+
+      - name: Invariant suite
+        run: >
+          dotnet test tests/Merpeeps.Core.Tests --no-build -c Release
+          --logger "trx;LogFileName=inner-${{ matrix.os }}.trx"
+
+      # Headless UI tests: the real window, real XAML and real handlers with no
+      # display. The suite renders with real Skia and asserts on captured pixels,
+      # so the bugs it covers — icons still drawn with styling off, unreadable
+      # labels in dark mode — are caught as *what is on screen*, not as what the
+      # drawing code intended. Both of those shipped past a green suite once and
+      # were found only by a person looking at a screenshot.
+      - name: Headless UI suite
+        run: >
+          dotnet test tests/Merpeeps.App.Tests --no-build -c Release
+          --logger "trx;LogFileName=ui-${{ matrix.os }}.trx"
+
+      # Culture-sensitive number formatting is a real cross-platform failure:
+      # a German machine writes `x: 12,5`, which no other machine can read.
+      # Running the suite under a comma-decimal locale proves the guard holds.
+      - name: Invariant suite under a comma-decimal locale
+        env:
+          DOTNET_SYSTEM_GLOBALIZATION_PREDEFINED_CULTURES_ONLY: 'false'
+          LANG: de_DE.UTF-8
+          LC_ALL: de_DE.UTF-8
+        run: >
+          dotnet test tests/Merpeeps.Core.Tests --no-build -c Release
+          --logger "trx;LogFileName=locale-${{ matrix.os }}.trx"
+
+      - name: MCP server smoke test
+        run: node oracle/mcp-smoke.mjs src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
+
+      # The differentiated claim is that an agent can build diagrams with
+      # minimal diffs. This exercises that end to end over real MCP stdio.
+      - name: Agent workflow over MCP
+        run: node oracle/mcp-agent-test.mjs src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inner-loop-results-${{ matrix.os }}
+          path: '**/TestResults/*.trx'
+
+  desktop:
+    name: Desktop app builds (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-latest
+            rid: osx-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Avalonia is cross-platform, but "compiles on Linux" is a claim that has
+      # to be checked rather than assumed — a stray Windows-only API or a
+      # platform-specific font reference would only show up here.
+      - name: Publish the editor for ${{ matrix.rid }}
+        run: >
+          dotnet publish src/Merpeeps.App -c Release -r ${{ matrix.rid }}
+          --self-contained false -o out/app
+
+      - name: Publish the MCP server for ${{ matrix.rid }}
+        run: >
+          dotnet publish src/Merpeeps.Mcp -c Release -r ${{ matrix.rid }}
+          --self-contained false -o out/mcp
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merpeeps-${{ matrix.rid }}
+          path: out/
+
+  packages:
+    name: Published packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: merpeeps-mermaid-layout unit tests
+        working-directory: packages/merpeeps-mermaid-layout
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+
+      # The package's own tests import from ../src, so a wrong `files` list or a
+      # broken `exports` map would ship silently. This installs the real tarball.
+      - name: merpeeps-mermaid-layout works when installed
+        run: node oracle/package-consumer-test.mjs
+
+      - name: NuGet package builds
+        run: dotnet pack src/Merpeeps.Core -c Release -o artifacts
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: packages
+          path: artifacts/*.nupkg
+
+  outer-loop:
+    name: Outer loop (real mermaid.js oracle)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: oracle
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: oracle/package-lock.json
+
+      - run: npm ci
+
+      # Ubuntu runners have no system Chrome, so use Playwright's bundled build.
+      - run: npx playwright install --with-deps chromium
+
+      # The preview page is emitted by the CLI, so this job needs it built.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build the CLI (it emits the preview page)
+        working-directory: .
+        run: dotnet build src/Merpeeps.Cli -c Release
+
+      # The oracle imports the installed `merpeeps-mermaid-layout` package, not a copy of it,
+      # so this proves the artefact we publish is the one verified against real
+      # mermaid.js rather than something that merely resembles it.
+      - name: Conformance against stock mermaid
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+          MERPEEPS_MIN_RENDERABLE: '30'
+        run: node run-oracle.mjs | tee oracle-report.json
+
+      # A suite that cannot go red is worthless: prove it detects real breakage.
+      # The editor rewrites the body on structural edits; stock mermaid must
+      # accept the result, not just our own parser.
+      # generated-cases.json is a golden file regenerated by `dotnet test`, so a
+      # change to the writer shows up as a reviewable diff before it is validated.
+      - name: Validate editor-generated mermaid
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: node generated-output-test.mjs
+
+      - name: Negative test (prove the harness can fail)
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: node negative-test.mjs
+
+      # Storing an arrangement is worthless if nothing draws it. This asserts
+      # nodes land at their stored coordinates in real mermaid, not merely that
+      # the render did not throw.
+      - name: Layout plugin draws at stored positions
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: node layout-plugin-test.mjs
+
+      # The editor's reference pane runs in an OS webview, which cannot exist on
+      # a headless runner. The page that pane displays is ordinary HTML though,
+      # so it is emitted by the CLI and exercised here — that keeps the
+      # reference-render path covered on machines that could never host a
+      # webview. It also proves the published npm package loads and works in a
+      # real browser, which is the gate that blocks releasing it.
+      - name: Self-contained preview page renders offline
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: node preview-page-test.mjs
+
+      # `bake` claims styling survives into plain mermaid with no plugin. That is
+      # only worth anything if the colours actually match, so this compares three
+      # renders — stripped, baked, and the plugin reference — rather than merely
+      # checking the baked file parses. A diagram that ignored every `style`
+      # statement would pass a parse check.
+      - name: Baked output renders unaided
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: node bake-render-test.mjs
+
+      # Registering a layout plugin is not the same as it taking effect: mermaid
+      # silently falls back to dagre for an unregistered name, so a page can look
+      # fine while ignoring the request entirely. This renders the same diagram
+      # under dagre and ELK and asserts the geometry differs.
+      - name: Vendored ELK plugin genuinely changes the layout
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: node elk-plugin-test.mjs
+
+      # The argument for storing coordinates at all: run a real layout engine
+      # once, freeze what it decided, and reproduce it later with the engine
+      # absent. Harvests an ELK layout, writes it in with `merpeeps adopt`,
+      # re-renders without ELK, and checks the nodes land in the same places —
+      # against a control showing they do not without the stored positions.
+      - name: A harvested ELK layout replays without ELK
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: node harvest-test.mjs
+
+      # The canvas exists to predict the render, so its theme colours have to be
+      # the ones mermaid actually draws. Measures every theme from the shipped
+      # mermaid build and compares them to DiagramPalette — a mermaid upgrade
+      # that changes a colour fails here rather than leaving the editor quietly
+      # disagreeing with the pane beside it.
+      - name: The editor's theme palette matches the render
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: node theme-colour-probe.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oracle-report
+          path: oracle/oracle-report.json
+
+  aot:
+    name: NativeAOT CLI (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            exe: merpeeps.exe
+          - os: ubuntu-latest
+            rid: linux-x64
+            exe: merpeeps
+          - os: macos-latest
+            rid: osx-arm64
+            exe: merpeeps
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # ILCompiler shells out to the platform linker: MSVC on Windows, and
+      # clang/objcopy on Linux. macOS runners already have the Xcode tools.
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+
+      - name: Install the native toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Publish CLI as a single native binary
+        run: dotnet publish src/Merpeeps.Cli -c Release -r ${{ matrix.rid }}
+
+      # A binary that links but cannot parse is worse than one that fails to
+      # build, so run the real conformance suite through it.
+      - name: Smoke-test the native binary
+        shell: bash
+        run: |
+          bin=$(find src/Merpeeps.Cli/bin -path '*publish*' -name '${{ matrix.exe }}' -type f | head -n1)
+          if [ -z "$bin" ]; then echo "native binary not produced"; exit 1; fi
+          echo "size: $(du -h "$bin" | cut -f1)"
+          chmod +x "$bin"
+          "$bin" conformance oracle/samples.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merpeeps-cli-${{ matrix.rid }}
+          path: src/Merpeeps.Cli/bin/**/publish/${{ matrix.exe }}
+

@@ -1,0 +1,79 @@
+id: c4
+name: C4 model
+spec: 1
+licence: MIT
+url: https://c4model.com
+
+# C4 distinguishes people, systems, containers and components. The convention
+# that external things are grey is carried in the fills below.
+stencils:
+  - label: Person
+    text: User
+    shape: Stadium
+    icon: user
+    fill: "#DAE8FC"
+    stroke: "#6C8EBF"
+    hint: A human actor
+
+  - label: Software system
+    text: System
+    shape: RoundedRect
+    fill: "#DAE8FC"
+    stroke: "#6C8EBF"
+    hint: A whole system you own
+
+  - label: External system
+    text: External system
+    shape: RoundedRect
+    icon: cloud
+    fill: "#F5F5F5"
+    stroke: "#666666"
+    hint: A system someone else owns
+
+  - label: Container
+    text: Web Application
+    shape: RoundedRect
+    icon: server
+    fill: "#D5E8D4"
+    stroke: "#82B366"
+    hint: A deployable — app, service, function
+
+  - label: Component
+    text: Controller
+    shape: Rectangle
+    icon: cog
+    fill: "#D5E8D4"
+    stroke: "#82B366"
+    hint: A grouping inside a container
+
+  - label: Database
+    text: Database
+    shape: Cylinder
+    icon: database
+    fill: "#F8CECC"
+    stroke: "#B85450"
+    hint: A datastore container
+
+  - label: Web browser
+    text: Single-Page App
+    shape: RoundedRect
+    icon: browser
+    fill: "#DAE8FC"
+    stroke: "#6C8EBF"
+    hint: A browser-delivered container
+
+  - label: Mobile app
+    text: Mobile App
+    shape: RoundedRect
+    icon: mobile
+    fill: "#DAE8FC"
+    stroke: "#6C8EBF"
+    hint: A phone or tablet container
+
+  - label: Message bus
+    text: Event Bus
+    shape: Subroutine
+    icon: queue
+    fill: "#FFF2CC"
+    stroke: "#D6B656"
+    hint: Asynchronous transport between containers

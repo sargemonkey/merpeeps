@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Merpeeps.Core</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+  </PropertyGroup>
+
+  <!-- NuGet metadata. Deliberately no "Mermaid" in the package id: the name
+       describes the format we define, and Mermaid is named only descriptively
+       in the summary. See TRADEMARKS.md. -->
+  <PropertyGroup>
+    <PackageId>Merpeeps.Core</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Merpeeps contributors</Authors>
+    <Description>Store diagram layout positions, styling and metadata inside ordinary Mermaid files, without changing what they render. Reference implementation of the Merpeeps format.</Description>
+    <PackageTags>mermaid;diagram;layout;graph;flowchart;frontmatter;merpeeps</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/sargeMonkey/merpeeps</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/sargeMonkey/merpeeps</PackageProjectUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Keep the XML doc file so documented members give consumers IntelliSense,
+         but do not demand a <summary> on every property. The types that need
+         explanation have it; adding "Gets or sets X" to 348 members would be
+         noise, not documentation. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" Version="16.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="PACKAGE.md" Pack="true" PackagePath="README.md" />
+  </ItemGroup>
+  <!-- The four built-in collections are ordinary packs, embedded rather than
+       installed, so they exercise the same loader a third-party pack does. A
+       pack format only used by other people is one nobody notices is broken. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Packs\*.merpeeps-pack.yml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Merpeeps.Core.Tests" />
+  </ItemGroup>
+</Project>

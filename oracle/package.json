@@ -1,0 +1,26 @@
+{
+  "name": "merpeeps-oracle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Outer-loop conformance oracle. Uses real mermaid.js as ground truth to prove Merpeeps degrades gracefully.",
+  "scripts": {
+    "test": "node run-oracle.mjs",
+    "test:negative": "node negative-test.mjs",
+    "test:preview": "node preview-page-test.mjs",
+    "test:bake": "node bake-render-test.mjs",
+    "test:harvest": "node harvest-test.mjs",
+    "test:themes": "node theme-colour-probe.mjs"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "mermaid": "^11.16.1",
+    "merpeeps-mermaid-layout": "file:../packages/merpeeps-mermaid-layout"
+  },
+  "devDependencies": {
+    "@mermaid-js/layout-elk": "^0.2.2",
+    "@mermaid-js/layout-tidy-tree": "^0.2.2",
+    "playwright": "^1.49.0"
+  }
+}
+

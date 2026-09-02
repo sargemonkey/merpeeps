@@ -1,0 +1,35 @@
+id: state
+name: State machine
+spec: 1
+licence: MIT
+
+# The start and end markers are drawn as circles here; the state adapter maps
+# them to mermaid's [*].
+stencils:
+  - label: Start
+    text: Start
+    shape: Circle
+    fill: "#F5F5F5"
+    stroke: "#666666"
+    hint: Initial pseudo-state
+
+  - label: State
+    text: Idle
+    shape: RoundedRect
+    fill: "#DAE8FC"
+    stroke: "#6C8EBF"
+    hint: A state the machine rests in
+
+  - label: Choice
+    text: Choice
+    shape: Rhombus
+    fill: "#FFE6CC"
+    stroke: "#D79B00"
+    hint: A guarded branch between states
+
+  - label: End
+    text: End
+    shape: DoubleCircle
+    fill: "#F5F5F5"
+    stroke: "#666666"
+    hint: Final pseudo-state

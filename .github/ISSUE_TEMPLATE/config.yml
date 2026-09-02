@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: The naming / trademark position
+    url: https://github.com/sargeMonkey/merpeeps/blob/main/TRADEMARKS.md
+    about: >
+      If you represent Mermaid Chart Inc. or the Mermaid project and consider any
+      use of the name here inappropriate, please read this first — then open an
+      issue. A name is cheap to change.
+  - name: The file format
+    url: https://github.com/sargeMonkey/merpeeps/blob/main/SPEC.md
+    about: What is stored, and what a reader is required to do with it.
+  - name: User guide
+    url: https://github.com/sargeMonkey/merpeeps/blob/main/docs/GUIDE.md
+    about: Installing, the first ten minutes, sharing your diagrams, troubleshooting.

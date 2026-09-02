@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html><body><pre id="out">running…</pre>
+<script type="importmap">
+{ "imports": { "js-yaml": "./node_modules/js-yaml/dist/js-yaml.mjs" } }
+</script>
+<script type="module">
+import mermaid from './node_modules/mermaid/dist/mermaid.esm.mjs?c=1';
+import { parse, serialise, inject, bodyOf, split } from './merpeeps.mjs?c=1';
+
+const samples = await (await fetch('./samples.json?c=1')).json();
+mermaid.initialize({ startOnLoad: false, suppressErrorRendering: true });
+
+// Extension payload deliberately full of distinctive, greppable tokens.
+const PATCH = {
+  spec: 1,
+  layout: {
+    nodes: { ZZTOP: { x: 4242, y: 8484, w: 160, h: 60 } },
+    edges: { 'ZZTOP->ZZBOT#0': { waypoints: [[11, 22]], labelT: 0.5 } },
+    viewport: { x: 0, y: 0, zoom: 1 }, engine: 'manual',
+  },
+  style: { nodes: { ZZTOP: { fill: '#abcdef', stroke: '#fedcba' } } },
+  semantics: { ZZTOP: { kind: 'container', tech: 'NodeJS', team: 'platform' } },
+  futureUnknownKey: { nested: 'PRESERVEME' },
+};
+const LEAK_TOKENS = ['4242', '8484', 'abcdef', 'fedcba', 'ZZTOP', 'PRESERVEME',
+                     'x-merpeeps', 'merpeeps1', 'futureUnknownKey', 'NodeJS', 'platform'];
+
+// A "leak" means a user could SEE our metadata. Path geometry contains
+// arbitrary floats that coincidentally collide with numeric tokens, so we
+// scan only the surface a reader actually perceives.
+const surface = (svg) => {
+  const d = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  const text = [...d.querySelectorAll('*')]
+    .map(n => (n.childNodes.length === 1 && n.firstChild.nodeType === 3)
+      ? n.textContent : '').join(' ');
+  const attrs = [...d.querySelectorAll('[title],[aria-label],[alt],[href]')]
+    .map(n => ['title', 'aria-label', 'alt', 'href']
+      .map(a => n.getAttribute(a) || '').join(' ')).join(' ');
+  return `${text} ${attrs}`;
+};
+const visible = (svg) => {
+  const d = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  return [...d.querySelectorAll('text,tspan,span,p,title')]
+    .map(n => n.textContent.trim()).filter(Boolean);
+};
+// Some diagram types (gitgraph) synthesise random ids per render. Normalise
+// them so we compare semantics, not entropy.
+const norm = (arr) => arr.map(s => s.replace(/\b[0-9a-f]{7,40}\b/gi, '<hash>'));
+const counts = (svg) => {
+  const d = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  return { n: d.querySelectorAll('g.node,g.nodes>g,rect,circle,polygon').length,
+           e: d.querySelectorAll('path').length };
+};
+const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+const results = [];
+let i = 0;
+for (const [name, base] of Object.entries(samples)) {
+  i++;
+  const r = { type: name, checks: {} };
+  try {
+    const ext = inject(base, PATCH);
+
+    // --- pure-function invariants (no rendering needed) ---
+    r.checks.bodyPreserved   = bodyOf(ext) === bodyOf(base);
+    r.checks.roundTrip       = eq(parse(ext), PATCH);
+    r.checks.idempotent      = inject(ext, PATCH) === ext;
+    r.checks.singleFrontmatter =
+      (ext.match(/^---\r?$/gm) || []).length <= 2 &&
+      !/---[\s\S]*?---[\s\S]*?^---$/m.test(ext.replace(/^---[\s\S]*?^---$/m, ''));
+    r.checks.unknownPreserved =
+      parse(ext)?.futureUnknownKey?.nested === 'PRESERVEME';
+    const viaComment = serialise(base, PATCH, { carrier: 'comment' });
+    r.checks.commentCarrier  = eq(parse(viaComment), PATCH);
+
+    // --- rendering invariants (mermaid.js is the oracle) ---
+    // Render the BASELINE twice first: establishes whether this diagram type
+    // is deterministic, so we never blame the extension for engine entropy.
+    const a = await mermaid.render('a' + i, base);
+    const a2 = await mermaid.render('a2_' + i, base);
+    const b = await mermaid.render('b' + i, ext);
+    r.deterministic = eq(norm(visible(a.svg)), norm(visible(a2.svg)));
+
+    r.checks.sameVisibleText = eq(norm(visible(a.svg)), norm(visible(b.svg)));
+    r.checks.sameShapeCounts = eq(counts(a.svg), counts(b.svg));
+    // Differential leak test on the user-visible surface only.
+    const sa = surface(a.svg), sb = surface(b.svg);
+    r.leaks = LEAK_TOKENS.filter(t => sb.includes(t) && !sa.includes(t));
+    r.checks.noLeak = r.leaks.length === 0;
+
+    r.rendered = true;
+  } catch (e) {
+    r.rendered = false;
+    r.error = String(e && e.message || e).split('\n')[0].slice(0, 80);
+  }
+  r.pass = r.rendered && Object.values(r.checks).every(Boolean);
+  results.push(r);
+}
+
+const renderable = results.filter(r => r.rendered);
+const failing = renderable.filter(r => !r.pass);
+const byCheck = {};
+for (const r of renderable) {
+  for (const [k, v] of Object.entries(r.checks)) {
+    byCheck[k] = byCheck[k] || { pass: 0, fail: 0 };
+    v ? byCheck[k].pass++ : byCheck[k].fail++;
+  }
+}
+window.__CONF__ = {
+  mermaid: '11.16.1',
+  totalSamples: results.length,
+  renderable: renderable.length,
+  notRenderable: results.filter(r => !r.rendered).map(r => r.type),
+  passing: renderable.filter(r => r.pass).length,
+  failing: failing.map(r => ({
+    type: r.type,
+    failed: Object.entries(r.checks).filter(([, v]) => !v).map(([k]) => k),
+    leaks: r.leaks,
+  })),
+  byCheck,
+  verdict: failing.length === 0 ? 'CONFORMANT' : 'VIOLATIONS',
+};
+document.getElementById('out').textContent =
+  JSON.stringify(window.__CONF__, null, 1);
+</script></body></html>

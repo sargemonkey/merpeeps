@@ -1,0 +1,14 @@
+---
+title: Order fulfilment
+---
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> Submitted : submit
+    Submitted --> InReview : assign
+    InReview --> Submitted : request changes
+    InReview --> Approved : approve
+    InReview --> Rejected : reject
+    Approved --> Fulfilled : ship
+    Rejected --> Draft : revise
+    Fulfilled --> [*]
+    note right of InReview : two approvers required

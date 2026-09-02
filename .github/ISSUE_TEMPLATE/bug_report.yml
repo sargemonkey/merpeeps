@@ -1,0 +1,68 @@
+name: Bug report
+description: Something behaves differently from what it claims to
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The most useful reports are the ones that
+        let someone else see the same thing you did.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagram
+    attributes:
+      label: The diagram file
+      description: >
+        If it involves a specific file, paste it — including the `x-merpeeps`
+        frontmatter block. Trim it to the smallest version that still misbehaves
+        if you can, but a large file that reproduces beats a small one that
+        doesn't.
+      render: yaml
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce it
+      placeholder: |
+        1. Open the file
+        2. Select the API Gateway node
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - The editor (Merpeeps.App)
+        - The command line (merpeeps)
+        - The npm package (merpeeps-mermaid-layout)
+        - The NuGet package (Merpeeps.Core)
+        - The MCP server
+        - Somewhere else / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11 24H2 / Ubuntu 24.04 / macOS 15
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: >
+        Screenshots are welcome — particularly for anything visual, where what
+        is on screen is the evidence and a description of it is not.

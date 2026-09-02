@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Reference rendering: a self-contained HTML page that draws a diagram with the
+    real upstream mermaid.
+
+    Kept apart from Merpeeps.Core deliberately. Core ships to NuGet as a small
+    format library, and consumers of the format have no business downloading a
+    vendored copy of mermaid with it. Only the editor and the CLI, which actually
+    produce previews, take this dependency.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Merpeeps.Core\Merpeeps.Core.csproj" />
+  </ItemGroup>
+
+  <!-- The shell's import-resolution and escaping helpers are internal because
+       nothing outside should call them, but they are exactly the parts worth
+       testing directly: both have already produced page-breaking bugs. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Merpeeps.App.Tests" />
+  </ItemGroup>
+
+  <!--
+    mermaid and js-yaml are vendored verbatim; see Assets/vendor/README.md for
+    provenance and licences. The merpeeps-mermaid-layout files are linked straight
+    out of packages/ rather than copied, so the preview always exercises the
+    exact source we publish instead of a duplicate that could silently drift.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\vendor\mermaid\mermaid.min.js"
+                      LogicalName="Merpeeps.Render.Assets.mermaid.min.js" />
+    <EmbeddedResource Include="Assets\vendor\mermaid\LICENSE"
+                      LogicalName="Merpeeps.Render.Assets.mermaid.LICENSE" />
+    <EmbeddedResource Include="Assets\vendor\js-yaml\js-yaml.mjs"
+                      LogicalName="Merpeeps.Render.Assets.js-yaml.mjs" />
+    <EmbeddedResource Include="Assets\vendor\js-yaml\LICENSE"
+                      LogicalName="Merpeeps.Render.Assets.js-yaml.LICENSE" />
+    <EmbeddedResource Include="..\..\packages\merpeeps-mermaid-layout\src\index.js"
+                      LogicalName="Merpeeps.Render.Assets.merpeeps.index.js" />
+    <EmbeddedResource Include="..\..\packages\merpeeps-mermaid-layout\src\mermaid-plugin.js"
+                      LogicalName="Merpeeps.Render.Assets.merpeeps.plugin.js" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,103 @@
+id: architecture
+name: Architecture
+spec: 1
+licence: MIT
+
+# Infrastructure pieces, for the diagram you draw when explaining how a service
+# is actually deployed.
+stencils:
+  - label: Service
+    text: Service
+    shape: Rectangle
+    icon: server
+    fill: "#D5E8D4"
+    stroke: "#82B366"
+    hint: A running process
+
+  - label: API gateway
+    text: API Gateway
+    shape: Hexagon
+    icon: gateway
+    fill: "#FFE6CC"
+    stroke: "#D79B00"
+    hint: Front door for inbound traffic
+
+  - label: Database
+    text: Database
+    shape: Cylinder
+    icon: database
+    fill: "#F8CECC"
+    stroke: "#B85450"
+    hint: Relational or document store
+
+  - label: Cache
+    text: Cache
+    shape: Cylinder
+    icon: cache
+    fill: "#F8CECC"
+    stroke: "#B85450"
+    hint: Redis, Memcached, and friends
+
+  - label: Queue
+    text: Queue
+    shape: Subroutine
+    icon: queue
+    fill: "#FFF2CC"
+    stroke: "#D6B656"
+    hint: A message queue or topic
+
+  - label: Object storage
+    text: Storage
+    shape: Cylinder
+    icon: storage
+    fill: "#FFF2CC"
+    stroke: "#D6B656"
+    hint: Blob or object storage
+
+  - label: Function
+    text: Function
+    shape: RoundedRect
+    icon: function
+    fill: "#E1D5E7"
+    stroke: "#9673A6"
+    hint: Serverless or lambda
+
+  - label: Auth
+    text: Auth Service
+    shape: RoundedRect
+    icon: shield
+    fill: "#E1D5E7"
+    stroke: "#9673A6"
+    hint: Identity, authorisation, secrets
+
+  - label: Client
+    text: Web Client
+    shape: RoundedRect
+    icon: browser
+    fill: "#DAE8FC"
+    stroke: "#6C8EBF"
+    hint: Browser front end
+
+  - label: Mobile client
+    text: Mobile Client
+    shape: RoundedRect
+    icon: mobile
+    fill: "#DAE8FC"
+    stroke: "#6C8EBF"
+    hint: Phone or tablet front end
+
+  - label: Cloud
+    text: Cloud Provider
+    shape: RoundedRect
+    icon: cloud
+    fill: "#F5F5F5"
+    stroke: "#666666"
+    hint: A managed or third-party service
+
+  - label: Worker
+    text: Worker
+    shape: Rectangle
+    icon: cog
+    fill: "#D5E8D4"
+    stroke: "#82B366"
+    hint: Background or scheduled processing

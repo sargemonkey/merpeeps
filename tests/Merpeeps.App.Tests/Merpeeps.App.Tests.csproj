@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <!-- CopyPixels needs a raw buffer address to read the rendered frame. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- Avalonia.Headless.XUnit 12.x is built against xunit v3, so this project
+       uses v3 while the Core suite stays on v2. Mixing them in one assembly
+       gives ambiguous-attribute errors. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageReference Include="Avalonia.Headless.XUnit" Version="12.0.4" />
+    <!-- Real Skia rendering so RenderedFrameTests can assert on actual pixels
+         rather than on what the drawing code intended. -->
+    <PackageReference Include="Avalonia.Skia" Version="12.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Merpeeps.App\Merpeeps.App.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,106 @@
+---
+x-merpeeps:
+  spec: 1
+  layout:
+    nodes:
+      web:
+        x: 60
+        y: 0
+        w: 139
+        h: 46
+      gw:
+        x: 60
+        y: 130
+        w: 148
+        h: 46
+      auth:
+        x: 300
+        y: 130
+        w: 148
+        h: 46
+      orders:
+        x: 60
+        y: 260
+        w: 154
+        h: 46
+      inv:
+        x: 300
+        y: 260
+        w: 151
+        h: 46
+      bus:
+        x: 60
+        y: 390
+        w: 132
+        h: 46
+      n1:
+        x: 360
+        y: -130
+        w: 90
+        h: 46
+      n2:
+        x: 90
+        y: -140
+        w: 130
+        h: 46
+      n3:
+        x: 270
+        y: -40
+        w: 111
+        h: 46
+      n4:
+        x: 410
+        y: 460
+        w: 153
+        h: 46
+    engine: manual
+  style:
+    nodes:
+      web:
+        fill: '#DAE8FC'
+        stroke: '#6C8EBF'
+        icon: browser
+      gw:
+        fill: '#FFE6CC'
+        stroke: '#D79B00'
+        icon: gateway
+      auth:
+        fill: '#E1D5E7'
+        stroke: '#9673A6'
+        icon: shield
+      orders:
+        fill: '#D5E8D4'
+        stroke: '#82B366'
+        icon: server
+      inv:
+        fill: '#F8CECC'
+        stroke: '#B85450'
+        icon: database
+      bus:
+        fill: '#FFF2CC'
+        stroke: '#D6B656'
+        icon: queue
+        dashed: true
+      n2:
+        fill: '#F8CECC'
+        stroke: '#B85450'
+        icon: database
+      n3:
+        fill: '#F8CECC'
+        stroke: '#B85450'
+        icon: cache
+      n4:
+        fill: '#DAE8FC'
+        stroke: '#6C8EBF'
+        icon: mobile
+---
+flowchart TD
+    web[Web Client] --> gw{{API Gateway}}
+    gw -->|authenticate| auth([Auth Service])
+    gw --> orders[Order Service]
+    orders --> inv[(Inventory DB)]
+    orders --> bus[[Event Bus]]
+    n1[Process]
+    n2[(Database)]
+    n3[(Cache)]
+    n4(Mobile Client)

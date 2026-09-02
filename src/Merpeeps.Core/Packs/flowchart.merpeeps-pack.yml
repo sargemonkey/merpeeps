@@ -1,0 +1,57 @@
+id: flowchart
+name: Flowchart
+spec: 1
+licence: MIT
+
+# Plain mermaid flowchart shapes, named for what they mean rather than what they
+# look like — the reason to pick a rhombus is that it is a decision.
+stencils:
+  - label: Process
+    text: Process
+    shape: Rectangle
+    hint: A step that does something
+
+  - label: Decision
+    text: Decision?
+    shape: Rhombus
+    hint: A branch — label the edges yes/no
+
+  - label: Terminal
+    text: Start
+    shape: Stadium
+    hint: Where a flow begins or ends
+
+  - label: Subprocess
+    text: Subprocess
+    shape: Subroutine
+    hint: A step defined elsewhere
+
+  - label: Data store
+    text: Store
+    shape: Cylinder
+    hint: A database or persistent store
+
+  - label: Connector
+    text: A
+    shape: Circle
+    hint: Joins flows across a page break
+
+  - label: Preparation
+    text: Prepare
+    shape: Hexagon
+    hint: Setup or initialisation
+
+  - label: Input / output
+    text: Input
+    shape: Parallelogram
+    hint: Data entering or leaving
+
+  - label: Manual operation
+    text: Manual step
+    shape: Trapezoid
+    hint: A step a person performs
+
+  - label: Rounded
+    text: Step
+    shape: RoundedRect
+    hint: A softer process box

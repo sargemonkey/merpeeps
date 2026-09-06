@@ -186,11 +186,13 @@ public static class MerpeepsTools
     [Description("Re-run automatic layout and store the resulting positions, so an " +
                  "agent never has to invent coordinates after adding nodes. " +
                  "Engines: layered (flows, default), tree (hierarchies), " +
-                 "force (networks), grid (predictable rows).")]
+                 "force (networks), circular (meshes and cycles), " +
+                 "radial (rings around the busiest node), grid (predictable rows). " +
+                 "Call merpeeps_layout_engines for the authoritative list.")]
     public static string Layout(
         [Description("Absolute path to the file")] string path,
-        [Description("Layout engine: layered, tree, force or grid. " +
-                     "Defaults to whatever the file last used, else layered.")]
+        [Description("Layout engine id. Defaults to whatever the file last used, " +
+                     "else layered.")]
         string? engine = null)
     {
         if (!File.Exists(path)) return Err($"file not found: {path}");
@@ -231,6 +233,54 @@ public static class MerpeepsTools
                 .ToArray(),
             @default = Core.Layout.LayoutEngines.Default.Id,
         }, Json);
+
+    // ------------------------------------------------------- handing over
+
+    /// <summary>
+    /// Open the diagram in the desktop editor.
+    /// </summary>
+    /// <remarks>
+    /// <para>The end of what an agent can usefully do alone. Structure, colour
+    /// and icons all follow from what a diagram means, so they can be chosen
+    /// from a description. Position does not: <see cref="Layout"/> produces a
+    /// defensible arrangement, but which of several defensible arrangements is
+    /// the right one is a judgement, and making it needs a canvas and a person.
+    /// </para>
+    /// <para>Returns as soon as the window is starting. Waiting for the editor
+    /// to close would block the agent for as long as someone spends arranging,
+    /// which from the caller's side is indistinguishable from a hang.</para>
+    /// </remarks>
+    [McpServerTool(Name = "merpeeps_open")]
+    [Description("Open a diagram in the Merpeeps visual editor so a human can " +
+                 "arrange it. Use this after composing or laying out a diagram: " +
+                 "node positions are a design judgement, so the last step is to " +
+                 "hand the file over rather than guess. Returns immediately; the " +
+                 "editor keeps running after this call.")]
+    public static string Open(
+        [Description("Absolute path to the .mmd or .md file to open")] string path)
+    {
+        if (!File.Exists(path)) return Err($"file not found: {path}");
+
+        var located = Core.Tooling.EditorLauncher.Locate();
+        if (!located.Found)
+            return JsonSerializer.Serialize(new
+            {
+                ok = false,
+                error = "the Merpeeps editor is not installed on this machine",
+                searched = located.Searched,
+                hint = $"build it with `dotnet build src/Merpeeps.App`, or set " +
+                       $"{Core.Tooling.EditorLauncher.OverrideVariable} to its path",
+            }, Json);
+
+        var full = Path.GetFullPath(path);
+        var pid = Core.Tooling.EditorLauncher.Launch(located.Path!, full);
+
+        return JsonSerializer.Serialize(new
+        {
+            ok = true, opened = full, editor = located.Path, pid,
+            note = "the editor is open; the user arranges the diagram and saves there",
+        }, Json);
+    }
 
     // ------------------------------------------------------------ hygiene
 

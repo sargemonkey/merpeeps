@@ -22,19 +22,36 @@ Version 0.1.0 is the first intended release of `merpeeps-mermaid-layout` (npm) a
 - **A mermaid layout plugin** (`merpeeps-mermaid-layout/mermaid`) — registers
   through mermaid's official layout interface so any mermaid-based viewer draws a
   saved arrangement instead of recomputing one.
-- **A command-line tool** (`merpeeps`) — read, validate, strip, adopt, bake, svg,
-  preview and conformance, publishable as a single NativeAOT binary.
-- **An MCP server** — ten tools giving coding agents the same operations without
-  a screen.
+- **A command-line tool** (`merpeeps`) — read, describe, validate, strip, edit,
+  layout, layout-engines, adopt, bake, svg, preview, open and conformance,
+  publishable as a single NativeAOT binary.
+- **An MCP server** — eleven tools giving coding agents the same operations
+  without a screen.
+- **`merpeeps open` / `merpeeps_open`** — hands a file to the visual editor.
+  Structure, colour and icons follow from what a diagram means, so automation can
+  choose them; node positions are a judgement, so the end of an automated
+  workflow is a window rather than a guess.
+- **A hand tool** — `H`, or **✋ Pan** in the toolbar, makes a left-drag move the
+  view. Panning already worked on right-drag, middle-drag, `Ctrl`-drag and
+  space-drag, and was still reported as missing: a capability with no visible
+  control is one people conclude you do not have. The gestures are unchanged.
 - **`merpeeps bake`** — rewrites Merpeeps styling as native `style` statements so
   colours survive on GitHub with no plugin, and reports what it could not carry
   rather than dropping it silently. Available from the editor's File menu and
   from the command line.
 - **A conformance oracle** — real mermaid.js in a real browser as ground truth,
-  plus twelve further gates covering the npm package, the MCP server over stdio,
-  themes, previews and store-and-replay.
+  plus thirteen further gates covering the npm package, the MCP server over
+  stdio, themes, previews, store-and-replay, and CLI/MCP capability parity.
 
 ### Notes on scope
+
+- **The CLI and the MCP server are held to the same capability set.** They are
+  two front ends over one engine, and a gap between them is invisible to tests
+  that only look at one — which is how layout came to be reachable from an agent
+  and not from a script. `oracle/surface-parity-test.mjs` compares them and
+  requires a written reason for any asymmetry. Two are declared: `preview` needs
+  the vendored mermaid bundle, and `conformance` tests the tool rather than a
+  diagram.
 
 - **Layouts are computed in-process, in C#.** Layout engines that exist only as
   JavaScript are not offered from the editor's dropdown: running one means

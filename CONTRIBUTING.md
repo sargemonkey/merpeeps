@@ -66,7 +66,7 @@ which are separate top-level windows.
 | `Merpeeps.Core.Tests` | Format invariants, parsing, layout, edit commands, the surgical writer | `dotnet test tests/Merpeeps.Core.Tests` |
 | `Merpeeps.App.Tests` | The real window, real XAML, real handlers, headless — asserting on captured pixels | `dotnet test tests/Merpeeps.App.Tests` |
 | `oracle/run-oracle.mjs` | 30 diagram types × 9 invariants against real mermaid in Chrome | `node oracle/run-oracle.mjs` |
-| 12 further gates | Harvest replay, the npm plugin, MCP over real stdio, bake, previews, themes | see `oracle/` |
+| 13 further gates | Harvest replay, the npm plugin, MCP over real stdio, CLI/MCP parity, bake, previews, themes | see `oracle/` |
 
 The UI suite renders with real Skia and asserts on pixels rather than on what the
 drawing code intended. Two bugs — icons still drawn with styling switched off,
@@ -93,6 +93,19 @@ Two need the built MCP server:
 node mcp-smoke.mjs      ../src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
 node mcp-agent-test.mjs ../src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
 ```
+
+One needs both front ends, because comparing them is the point:
+
+```bash
+node surface-parity-test.mjs \
+  ../src/Merpeeps.Cli/bin/Release/net10.0/merpeeps \
+  ../src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
+```
+
+It fails if either surface grows a capability the other lacks, or if the CLI
+accepts a verb its own help text does not mention. Deliberate asymmetries live
+in `CLI_ONLY` / `MCP_ONLY` at the top of the file and need a stated reason —
+the point is to make drift a decision rather than an accident.
 
 Forgetting the argument prints usage and exits non-zero, which looks exactly like
 a failure — check the message before assuming you broke something.

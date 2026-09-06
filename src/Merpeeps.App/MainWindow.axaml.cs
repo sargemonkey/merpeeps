@@ -89,6 +89,9 @@ public partial class MainWindow : Window
         WireMenu(options.Theme);
         WireNodeList();
         WireStylingToggle();
+        WireHandToggle();
+
+        this.FindControl<TextBlock>("HintText")!.Text = CanvasHint;
 
         var engineBox = this.FindControl<ComboBox>("EngineBox")!;
         engineBox.ItemsSource = EditorLayouts.All.Select(c => c.Label).ToList();

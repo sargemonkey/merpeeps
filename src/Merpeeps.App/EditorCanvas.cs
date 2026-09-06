@@ -10,6 +10,31 @@ using Merpeeps.Core.Model;
 namespace Merpeeps.App;
 
 /// <summary>
+/// What a left-drag on the canvas means.
+/// </summary>
+/// <remarks>
+/// <para>Panning was always available on right-drag, middle-drag, Ctrl-drag and
+/// space-drag, and left-drag on empty canvas marquee-selects — which is what
+/// Figma, Visio, draw.io and Excalidraw all do. It was still reported as "drag
+/// pan is not implemented", because someone reached for the gesture they knew,
+/// got a selection rectangle, and concluded the feature was absent.</para>
+///
+/// <para>A hint in the status bar had already documented it. That is the lesson:
+/// a gesture with no visible control is a gesture people decide you do not have,
+/// however well it is described in text nobody reads. So panning gets a mode
+/// with a button and a key, alongside the gestures — which stay, because the
+/// people who already know them should not have to learn a mode.</para>
+/// </remarks>
+public enum CanvasTool
+{
+    /// <summary>Left-drag selects, moves and marquees.</summary>
+    Select,
+
+    /// <summary>Left-drag pans. The canvas becomes purely navigational.</summary>
+    Hand,
+}
+
+/// <summary>
 /// The editing surface: select, multi-select, drag, create, connect, rename
 /// and delete.
 ///
@@ -129,6 +154,56 @@ public sealed class EditorCanvas : Control
 
     /// <summary>True while space is held, which turns a drag into a pan.</summary>
     private bool _spaceHeld;
+
+    /// <summary>
+    /// What a left-drag does. Setting it updates the cursor and raises
+    /// <see cref="ToolChanged"/> so the toolbar button can follow.
+    /// </summary>
+    public CanvasTool Tool
+    {
+        get => _tool;
+        set
+        {
+            if (_tool == value) return;
+            _tool = value;
+
+            // Leaving the hand tool mid-drag would otherwise strand the pan,
+            // because the release that ends it arrives in the other mode.
+            _panFrom = null;
+
+            UpdateCursor();
+            ToolChanged?.Invoke(this, EventArgs.Empty);
+            InvalidateVisual();
+        }
+    }
+    private CanvasTool _tool = CanvasTool.Select;
+
+    /// <summary>Raised when <see cref="Tool"/> changes, however it was changed.</summary>
+    /// <remarks>
+    /// The keyboard can change the tool as well as the button, so the button
+    /// has to be told rather than assumed to be the only source of truth —
+    /// otherwise pressing H leaves a toggle that says the canvas is still
+    /// selecting while it pans.
+    /// </remarks>
+    public event EventHandler? ToolChanged;
+
+    /// <summary>True when a drag would pan rather than select.</summary>
+    private bool Panning => _tool == CanvasTool.Hand || _spaceHeld;
+
+    /// <summary>
+    /// Point the cursor at whatever the next drag will actually do.
+    /// </summary>
+    /// <remarks>
+    /// One place rather than five. The cursor was previously assigned wherever
+    /// a mode changed, which was already easy to get wrong with a single
+    /// modifier — every new state multiplies the assignments that have to agree,
+    /// and the failure is a canvas stuck showing a gesture it is no longer in.
+    /// </remarks>
+    private void UpdateCursor() =>
+        Cursor =
+            _panFrom is not null ? new Cursor(StandardCursorType.SizeAll)
+            : Panning ? new Cursor(StandardCursorType.Hand)
+            : Cursor.Default;
 
     private static readonly Typeface Face = new(FontFamily.Default);
 
@@ -502,6 +577,17 @@ public sealed class EditorCanvas : Control
         var pt = e.GetCurrentPoint(this);
         var world = ToWorld(pt.Position);
 
+        // The hand tool — and space, its held equivalent — make the canvas
+        // purely navigational: every press pans, and nothing selects, creates
+        // or connects. Checked before the double-click case on purpose, since
+        // adding a node while navigating is never what was meant.
+        if (Panning)
+        {
+            StartPan(pt.Position, e);
+            e.Handled = true;
+            return;
+        }
+
         if (e.ClickCount == 2)
         {
             // Node, then link, then empty canvas — the same precedence as a
@@ -531,11 +617,6 @@ public sealed class EditorCanvas : Control
             e.Handled = true;
             return;
         }
-
-        // Space held turns any drag into a pan — the gesture people already
-        // know from every other canvas tool, and it works without needing a
-        // three-button mouse or a modifier that also means "add to selection".
-        if (_spaceHeld) { StartPan(pt.Position, e); e.Handled = true; return; }
 
         // A handle on the selected node starts a connection.
         if (Selected is { } sel)
@@ -610,7 +691,7 @@ public sealed class EditorCanvas : Control
 
         // Feedback that the drag is a pan and not a selection. Without it a
         // right-drag looks like nothing is happening until the view moves.
-        Cursor = new Cursor(StandardCursorType.SizeAll);
+        UpdateCursor();
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -716,9 +797,9 @@ public sealed class EditorCanvas : Control
         _panFrom = null;
         _marqueeStart = null;
 
-        // Space still held means the next drag is still a pan, so keep the
-        // cursor; otherwise put it back.
-        if (!_spaceHeld) Cursor = Cursor.Default;
+        // Back to whatever the resting gesture is: the hand tool and a held
+        // space both survive a release, an ordinary pan does not.
+        UpdateCursor();
 
         e.Pointer.Capture(null);
         InvalidateVisual();
@@ -789,7 +870,7 @@ public sealed class EditorCanvas : Control
         // the inline editor a space is just a space.
         if (e.Key == Key.Space && !IsEditing)
         {
-            if (!_spaceHeld) { _spaceHeld = true; Cursor = new Cursor(StandardCursorType.SizeAll); }
+            if (!_spaceHeld) { _spaceHeld = true; UpdateCursor(); }
             e.Handled = true;
             return;
         }
@@ -841,7 +922,20 @@ public sealed class EditorCanvas : Control
             case Key.F2 when Selected is { } s:
                 BeginRename(s); e.Handled = true; break;
 
+            // H and V switch tools, as in Figma and Illustrator. Unmodified, so
+            // they are guarded by the IsEditing check above — inside a label
+            // these are just letters.
+            case Key.H when !ctrl:
+                Tool = CanvasTool.Hand; e.Handled = true; break;
+
+            case Key.V when !ctrl:
+                Tool = CanvasTool.Select; e.Handled = true; break;
+
             case Key.Escape:
+                // The way out of any mode. Someone who has lost track of what a
+                // drag will do needs one key that restores the ordinary canvas,
+                // not a rule about which key exits which state.
+                Tool = CanvasTool.Select;
                 _selection.Clear();
                 SelectionChanged?.Invoke(this, EventArgs.Empty);
                 e.Handled = true;
@@ -867,7 +961,7 @@ public sealed class EditorCanvas : Control
     {
         if (!_spaceHeld) return;
         _spaceHeld = false;
-        Cursor = Cursor.Default;
+        UpdateCursor();
     }
 
     private void AfterHistory()

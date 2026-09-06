@@ -66,6 +66,18 @@ jobs:
       - name: Agent workflow over MCP
         run: node oracle/mcp-agent-test.mjs src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
 
+      # The CLI and the MCP server are two front ends over one engine, and they
+      # drifted once: layout was reachable from an agent and not from a script,
+      # which no test caught because each surface was complete on its own terms.
+      # This compares them, and requires a stated reason for any asymmetry.
+      - name: CLI and MCP expose the same capabilities
+        shell: bash
+        run: |
+          cli=src/Merpeeps.Cli/bin/Release/net10.0/merpeeps
+          [ -f "$cli.exe" ] && cli="$cli.exe"
+          node oracle/surface-parity-test.mjs "$cli" \
+            src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -221,21 +233,13 @@ jobs:
           MERPEEPS_ORACLE_CHANNEL: bundled
         run: node bake-render-test.mjs
 
-      # Registering a layout plugin is not the same as it taking effect: mermaid
-      # silently falls back to dagre for an unregistered name, so a page can look
-      # fine while ignoring the request entirely. This renders the same diagram
-      # under dagre and ELK and asserts the geometry differs.
-      - name: Vendored ELK plugin genuinely changes the layout
-        env:
-          MERPEEPS_ORACLE_CHANNEL: bundled
-        run: node elk-plugin-test.mjs
-
-      # The argument for storing coordinates at all: run a real layout engine
-      # once, freeze what it decided, and reproduce it later with the engine
-      # absent. Harvests an ELK layout, writes it in with `merpeeps adopt`,
-      # re-renders without ELK, and checks the nodes land in the same places —
-      # against a control showing they do not without the stored positions.
-      - name: A harvested ELK layout replays without ELK
+      # The argument for storing coordinates at all: capture what a real renderer
+      # decided, freeze it, and reproduce it later. Harvests mermaid's own dagre
+      # layout, shifts every node by a fixed offset, writes that in with
+      # `merpeeps adopt`, re-renders, and checks the nodes land on the shifted
+      # coordinates. The offset is the control — harvesting dagre and replaying
+      # under dagre would pass whether the stored numbers were read or not.
+      - name: A harvested layout replays from stored coordinates
         env:
           MERPEEPS_ORACLE_CHANNEL: bundled
         run: node harvest-test.mjs

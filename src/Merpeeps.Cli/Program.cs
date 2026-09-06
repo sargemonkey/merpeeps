@@ -1,15 +1,25 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Merpeeps.Core;
+using Merpeeps.Core.Editing;
 using Merpeeps.Core.Export;
+using Merpeeps.Core.Layout;
 using Merpeeps.Core.Model;
+using Merpeeps.Core.Tooling;
 using Merpeeps.Render;
 
 // merpeeps — NativeAOT CLI over the Merpeeps engine.
-//   merpeeps read      <file>
-//   merpeeps validate  <file> [more...]     exit 1 if any invariant fails
-//   merpeeps strip     <file>
-//   merpeeps conformance <samples.json>     inner-loop suite (render-free)
+//
+// Every capability the MCP server exposes to an agent is reachable here too,
+// so a script and an agent can do the same work. The two surfaces are held
+// together by oracle/surface-parity-test.mjs, which fails if either grows a
+// capability the other lacks.
+//
+// Two commands are deliberately CLI-only. `preview` needs the vendored mermaid
+// bundle — three and a half megabytes that would otherwise be linked into the
+// MCP server to duplicate what `svg` and `open` already cover. `conformance`
+// runs the spec suite over a corpus of samples; it tests the tool rather than
+// operating on a diagram, so it has no meaning as an agent tool.
 
 if (args.Length == 0) { Usage(); return 2; }
 
@@ -21,12 +31,17 @@ try
     return cmd switch
     {
         "read" => Read(rest),
+        "describe" => Describe(rest),
         "validate" => Validate(rest),
         "strip" => Strip(rest),
+        "edit" => Edit(rest),
+        "layout" => Layout(rest),
+        "layout-engines" or "engines" => ListEngines(),
         "adopt" => Adopt(rest),
         "svg" => Svg(rest),
         "bake" => Bake(rest),
         "preview" => Preview(rest),
+        "open" => Open(rest),
         "conformance" => Conformance(rest),
         "-h" or "--help" or "help" => Usage(),
         _ => Fail($"unknown command '{cmd}'"),
@@ -43,17 +58,39 @@ static int Usage()
     Console.WriteLine("""
         merpeeps — layout and styling for Mermaid diagrams
 
+        inspect
           merpeeps read <file>                 print the Merpeeps block as JSON
+          merpeeps describe <file>             structure as JSON, without the body
+          merpeeps describe <file> --positions   ... including stored coordinates
           merpeeps validate <file>...          check invariants (exit 1 on failure)
+
+        change
+          merpeeps edit <file> --ops <json|file|->   apply operations
+          merpeeps layout <file> [--engine <id>]     arrange, and store the result
+          merpeeps adopt <file> --positions <json>   freeze supplied coordinates in
+          merpeeps layout-engines              list the engines, as JSON
+
+        `edit`, `layout`, `adopt` and `strip` print the result to stdout and
+        leave your file alone. Add --write to edit it in place, or --out <path>
+        to write elsewhere. Commands that discard work should be asked for.
+
+        export
           merpeeps strip <file>                print the plain mermaid to stdout
-          merpeeps strip <file> --write        remove the metadata from the file
-          merpeeps adopt <file> --positions <json>  freeze harvested coordinates in
-          merpeeps adopt <file> --positions <json> --write   ... editing in place
-          merpeeps bake <file>                plain mermaid with the styling baked in
-          merpeeps svg <file>                 render to SVG — styling and icons included
+          merpeeps bake <file>                 plain mermaid with the styling baked in
+          merpeeps svg <file>                  render to SVG — styling and icons included
           merpeeps preview <file>              self-contained HTML, rendered by real mermaid
           merpeeps preview <file> --plain      as a stock renderer draws it, ignoring Merpeeps
+
+        hand over
+          merpeeps open <file>                 open it in the Merpeeps editor
+
+        development
           merpeeps conformance <samples.json>  run the render-free invariant suite
+
+        `layout` computes positions; `open` is for the ones only a person can
+        choose. An agent can compose a diagram and arrange it plausibly, but
+        where a node belongs on the page is a judgement, so the useful last step
+        is to hand the file to someone with a canvas.
 
         `bake` rewrites Merpeeps styling as native `style` statements, so the
         colours show up anywhere mermaid runs — GitHub, GitLab, Notion — with no
@@ -64,6 +101,8 @@ static int Usage()
         `preview` writes one HTML file with mermaid embedded — it opens in any
         browser with no network access, and is how the editor's reference pane
         renders. Use --out to write it somewhere instead of stdout.
+
+        Set MERPEEPS_APP to point `open` at a specific editor build.
         """);
     return 0;
 }
@@ -76,6 +115,274 @@ static int Read(string[] a)
     var merpeeps = MerpeepsDoc.Parse(File.ReadAllText(a[0]));
     Console.WriteLine(merpeeps is null ? "null" : MerpeepsDoc.ToJson(merpeeps));
     return 0;
+}
+
+/// <summary>
+/// Report a diagram's structure without reproducing the diagram.
+///
+/// <para>The counterpart to <c>read</c>, which returns the metadata: this
+/// returns what the metadata is <em>about</em>. Together they let a caller
+/// answer "what is in this file" without loading the file, which matters for an
+/// agent paying by the token and for a script that wants to branch on the node
+/// count without writing a mermaid parser.</para>
+///
+/// <para>Positions are opt-in. They roughly double the output and are noise to
+/// anyone asking a structural question.</para>
+/// </summary>
+static int Describe(string[] a)
+{
+    var positions = a.Contains("--positions") || a.Contains("-p");
+    var files = a.Where(x => x is not ("--positions" or "-p")).ToArray();
+    if (files.Length < 1) return Fail("describe requires a file");
+    if (!File.Exists(files[0])) return Fail($"no such file: {files[0]}");
+
+    var model = MerpeepsDocument.Load(File.ReadAllText(files[0]));
+
+    var summary = new DescribeDto(
+        Kind: model.Kind,
+        Direction: model.Direction.ToString(),
+        NodeCount: model.Nodes.Count,
+        LinkCount: model.Edges.Count,
+        Nodes: model.Nodes.Select(n => new DescribeNodeDto(
+            n.Id, n.Display, n.Shape.ToString(),
+            positions ? Math.Round(n.X) : null,
+            positions ? Math.Round(n.Y) : null)).ToArray(),
+        Links: model.Edges.Select(e => new DescribeLinkDto(
+            e.From, e.To, e.Label, e.Kind.ToString())).ToArray(),
+        Subgraphs: model.Subgraphs.Select(s => new DescribeSubgraphDto(
+            s.Id, s.Title, s.NodeIds.ToArray())).ToArray());
+
+    Console.WriteLine(JsonSerializer.Serialize(summary, CliJson.Default.DescribeDto));
+    return 0;
+}
+
+/// <summary>
+/// Apply a batch of declarative edits.
+///
+/// <para>Goes through the same command layer the editor's own tools use, so an
+/// automated edit is indistinguishable from a hand one — and, more usefully,
+/// the writer is surgical: adding a node changes the lines for that node and
+/// leaves every other byte alone. A regenerated file would be correct and
+/// unreviewable.</para>
+///
+/// <para>The batch is all-or-nothing. A half-applied edit — node created, edge
+/// silently missing because the id was wrong — is the failure mode worth
+/// designing out, because it produces a diagram that is wrong rather than one
+/// that is obviously broken.</para>
+///
+/// <para>Prints the result and leaves the file alone unless asked. The MCP tool
+/// writes by default and offers <c>dryRun</c>; here the default <em>is</em> the
+/// dry run, which matches every other command in this CLI. Same capability,
+/// each surface keeping its own conventions.</para>
+/// </summary>
+static int Edit(string[] a)
+{
+    var opsIndex = Array.FindIndex(a, x => x is "--ops" or "-e");
+    if (opsIndex < 0) return Fail("edit requires --ops <json|file|->");
+    if (opsIndex + 1 >= a.Length) return Fail("--ops requires JSON, a path, or - for stdin");
+    var opsArg = a[opsIndex + 1];
+
+    var outIndex = Array.FindIndex(a, x => x is "--out" or "-o");
+    string? outPath = null;
+    if (outIndex >= 0)
+    {
+        if (outIndex + 1 >= a.Length) return Fail("--out requires a path");
+        outPath = a[outIndex + 1];
+    }
+
+    var inPlace = a.Contains("--write") || a.Contains("-w");
+    if (inPlace && outPath is not null)
+        return Fail("--write and --out are alternatives; pick one");
+
+    var consumed = new HashSet<int> { opsIndex, opsIndex + 1 };
+    if (outIndex >= 0) { consumed.Add(outIndex); consumed.Add(outIndex + 1); }
+    var files = a.Where((x, i) =>
+        !consumed.Contains(i) && x is not ("--write" or "-w")).ToArray();
+
+    if (files.Length < 1) return Fail("edit requires a file");
+    if (!File.Exists(files[0])) return Fail($"no such file: {files[0]}");
+
+    List<DiagramOperation>? operations;
+    try
+    {
+        operations = JsonSerializer.Deserialize(
+            ReadJsonArgument(opsArg), CliJson.Default.ListDiagramOperation);
+    }
+    catch (JsonException ex) { return Fail($"invalid --ops JSON: {ex.Message}"); }
+
+    if (operations is null || operations.Count == 0)
+        return Fail("no operations supplied");
+
+    var source = File.ReadAllText(files[0]);
+    var model = MerpeepsDocument.Load(source);
+    var result = OperationApplier.Apply(model, new EditHistory(model), operations);
+
+    // Report every failure, not just the first: an agent fixing one id at a
+    // time costs a round trip per mistake.
+    if (!result.Ok)
+    {
+        foreach (var error in result.Errors) Console.Error.WriteLine($"merpeeps: {error}");
+        Console.Error.WriteLine("merpeeps: nothing was written; fix the errors and retry");
+        return 1;
+    }
+
+    var updated = MerpeepsDocument.Save(source, model);
+
+    if (inPlace) File.WriteAllText(files[0], updated);
+    else if (outPath is null) { Console.Out.Write(updated); Console.Out.Flush(); }
+    else File.WriteAllText(outPath, updated);
+
+    foreach (var applied in result.Applied) Console.Error.WriteLine($"merpeeps: {applied}");
+    if (!inPlace && outPath is null)
+        Console.Error.WriteLine("merpeeps: printed to stdout — add --write to edit the file");
+    return 0;
+}
+
+/// <summary>
+/// Arrange the diagram and store the coordinates.
+///
+/// <para>The point of storing them is that a computed layout stops being
+/// recomputed. Mermaid re-runs its own algorithm on every render, so the same
+/// file can be drawn differently by two viewers, and a diagram someone reasoned
+/// about yesterday can rearrange itself today. Freezing the answer makes the
+/// picture a property of the document.</para>
+///
+/// <para>Existing hand-placed nodes are deliberately overridden here. Layout is
+/// normally polite about them — <see cref="ILayoutEngine"/> only moves nodes
+/// without an explicit position — but someone asking for a layout is asking for
+/// the whole diagram to be arranged, and honouring old pins would produce a
+/// half-tidied result that looks like a bug. This is also why the command
+/// prints rather than writes unless asked: it discards work, so it should be
+/// the thing you asked for.</para>
+/// </summary>
+static int Layout(string[] a)
+{
+    var engineIndex = Array.FindIndex(a, x => x is "--engine" or "-e");
+    string? engine = null;
+    if (engineIndex >= 0)
+    {
+        if (engineIndex + 1 >= a.Length) return Fail("--engine requires a name");
+        engine = a[engineIndex + 1];
+        if (!LayoutEngines.IsKnown(engine))
+            return Fail($"unknown engine '{engine}'; try: " +
+                        string.Join(", ", LayoutEngines.Available.Select(e => e.Id)));
+    }
+
+    var outIndex = Array.FindIndex(a, x => x is "--out" or "-o");
+    string? outPath = null;
+    if (outIndex >= 0)
+    {
+        if (outIndex + 1 >= a.Length) return Fail("--out requires a path");
+        outPath = a[outIndex + 1];
+    }
+
+    var inPlace = a.Contains("--write") || a.Contains("-w");
+    if (inPlace && outPath is not null)
+        return Fail("--write and --out are alternatives; pick one");
+
+    var consumed = new HashSet<int>();
+    if (engineIndex >= 0) { consumed.Add(engineIndex); consumed.Add(engineIndex + 1); }
+    if (outIndex >= 0) { consumed.Add(outIndex); consumed.Add(outIndex + 1); }
+    var files = a.Where((x, i) =>
+        !consumed.Contains(i) && x is not ("--write" or "-w")).ToArray();
+
+    if (files.Length < 1) return Fail("layout requires a file");
+    if (!File.Exists(files[0])) return Fail($"no such file: {files[0]}");
+
+    var source = File.ReadAllText(files[0]);
+    var model = MerpeepsDocument.Load(source);
+
+    // Fall back to the engine the file last used, so re-running the command
+    // without an argument reproduces the arrangement rather than switching
+    // algorithms underneath the author.
+    var chosen = LayoutEngines.ById(
+        engine ?? (LayoutEngines.IsKnown(model.LayoutEngine) ? model.LayoutEngine : null));
+
+    foreach (var n in model.Nodes) n.HasExplicitPosition = false;
+    chosen.Apply(model, LayoutOptions.Default);
+    foreach (var n in model.Nodes) n.HasExplicitPosition = true;
+    model.LayoutEngine = chosen.Id;
+
+    var updated = MerpeepsDocument.SavePositions(source, model);
+
+    if (MerpeepsDoc.BodyOf(updated) != MerpeepsDoc.BodyOf(source))
+        return Fail("refusing to write — laying out altered the diagram body");
+
+    if (inPlace) File.WriteAllText(files[0], updated);
+    else if (outPath is null) { Console.Out.Write(updated); Console.Out.Flush(); }
+    else File.WriteAllText(outPath, updated);
+
+    Console.Error.WriteLine(
+        $"merpeeps: positioned {model.Nodes.Count} node(s) with '{chosen.Id}' (body unchanged)");
+    if (!inPlace && outPath is null)
+        Console.Error.WriteLine("merpeeps: printed to stdout — add --write to edit the file");
+    return 0;
+}
+
+static int ListEngines()
+{
+    var engines = LayoutEngines.Available
+        .Select(e => new EngineDto(e.Id, e.Name, e.Description))
+        .ToArray();
+    Console.WriteLine(JsonSerializer.Serialize(
+        new EngineListDto(engines, LayoutEngines.Default.Id),
+        CliJson.Default.EngineListDto));
+    return 0;
+}
+
+/// <summary>
+/// Hand the file to the editor.
+///
+/// <para>Where the automated path stops. Structure, colour and icons all follow
+/// from what a diagram means, so a program can choose them; position does not,
+/// and a layout engine's answer is a starting point rather than a decision. The
+/// honest end of an automated workflow is therefore a window.</para>
+///
+/// <para>Does not wait for the editor to close. The person may spend twenty
+/// minutes arranging, and a caller blocked on that is a caller that looks
+/// hung.</para>
+/// </summary>
+static int Open(string[] a)
+{
+    if (a.Length < 1) return Fail("open requires a file");
+    var target = a[0];
+    if (!File.Exists(target)) return Fail($"no such file: {target}");
+
+    var located = EditorLauncher.Locate();
+    if (!located.Found)
+    {
+        Console.Error.WriteLine("merpeeps: could not find the editor. Looked in:");
+        foreach (var candidate in located.Searched)
+            Console.Error.WriteLine($"  {candidate}");
+        Console.Error.WriteLine(
+            $"merpeeps: set {EditorLauncher.OverrideVariable} to the editor's path, " +
+            "or build it with `dotnet build src/Merpeeps.App`");
+        return 2;
+    }
+
+    var full = Path.GetFullPath(target);
+    var pid = EditorLauncher.Launch(located.Path!, full);
+    Console.Error.WriteLine($"merpeeps: opened {full} in the editor (pid {pid})");
+    return 0;
+}
+
+/// <summary>
+/// Read a JSON argument given inline, as a path, or on stdin.
+/// </summary>
+/// <remarks>
+/// Inline is worth supporting because these payloads are usually one short
+/// array, and forcing a temporary file for a two-operation edit turns a
+/// one-liner into a script. The leading bracket or brace disambiguates without
+/// a flag, since neither begins a usable filename.
+/// </remarks>
+static string ReadJsonArgument(string argument)
+{
+    if (argument == "-") return Console.In.ReadToEnd();
+
+    var trimmed = argument.TrimStart();
+    if (trimmed.StartsWith('[') || trimmed.StartsWith('{')) return argument;
+
+    return File.ReadAllText(argument);
 }
 
 /// <summary>
@@ -464,5 +771,48 @@ static int Conformance(string[] a)
     return fail == 0 ? 0 : 1;
 }
 
+/// <summary>
+/// Wire shapes for the JSON commands.
+/// </summary>
+/// <remarks>
+/// <para>Written out as records rather than the anonymous objects the MCP
+/// server uses, because this binary is NativeAOT: reflection-based
+/// serialisation is trimmed away, so every shape has to be known to the source
+/// generator at build time. The upside is that the output schema is now
+/// something you can read in one place.</para>
+/// <para>Nulls are omitted, which is what makes <c>--positions</c> free: the
+/// coordinates simply are not there when they were not asked for, rather than
+/// appearing as a column of <c>null</c>.</para>
+/// </remarks>
+internal sealed record DescribeNodeDto(
+    string Id, string Label, string Shape, double? X, double? Y);
+
+internal sealed record DescribeLinkDto(
+    string From, string To, string? Label, string Kind);
+
+internal sealed record DescribeSubgraphDto(
+    string Id, string? Title, IReadOnlyList<string> Members);
+
+internal sealed record DescribeDto(
+    string Kind, string Direction, int NodeCount, int LinkCount,
+    IReadOnlyList<DescribeNodeDto> Nodes,
+    IReadOnlyList<DescribeLinkDto> Links,
+    IReadOnlyList<DescribeSubgraphDto> Subgraphs);
+
+internal sealed record EngineDto(string Id, string Name, string Description);
+
+internal sealed record EngineListDto(
+    IReadOnlyList<EngineDto> Engines, string Default);
+
+// DiagramOperation is registered directly rather than through a local copy, so
+// the operations this CLI accepts cannot drift from the ones the MCP server and
+// the editor accept — they are all deserialising into the same type.
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    PropertyNameCaseInsensitive = true,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(Dictionary<string, string>))]
+[JsonSerializable(typeof(DescribeDto))]
+[JsonSerializable(typeof(EngineListDto))]
+[JsonSerializable(typeof(List<DiagramOperation>))]
 internal partial class CliJson : JsonSerializerContext;

@@ -88,6 +88,8 @@
         <Button Name="RedoBtn"   Content="Redo"/>
         <Rectangle Width="1" Fill="{DynamicResource ThemeBorderLowBrush}" Margin="4,2"/>
         <Button Name="FitBtn"    Content="Fit"/>
+        <ToggleButton Name="HandToggle" Content="✋ Pan"
+                      ToolTip.Tip="Pan with a left-drag (H) · Esc or V returns to selecting · right-drag and space-drag always pan"/>
         <Button Name="RelayoutBtn" Content="Re-layout"/>
         <ComboBox Name="EngineBox" Width="168" Margin="4,0,0,0"
                   VerticalAlignment="Center"
@@ -109,8 +111,10 @@
             Background="{DynamicResource ThemeControlMidBrush}"
             BorderBrush="{DynamicResource ThemeBorderLowBrush}"
             BorderThickness="0,1,0,0" Padding="8,4">
-      <TextBlock Name="HintText" Opacity="0.65" FontSize="11"
-                 Text="Double-click canvas to add · double-click node or F2 to rename · drag a green handle to connect · click a link to select it · Delete removes · scroll or right-drag to pan, Ctrl+scroll to zoom · drag background to marquee-select"/>
+      <!-- Text is set from MainWindow.CanvasHint at startup. Left empty here
+           because it is also restored when the styling toggle flips, and two
+           copies of the same sentence had already drifted apart once. -->
+      <TextBlock Name="HintText" Opacity="0.65" FontSize="11"/>
     </Border>
 
     <Grid ColumnDefinitions="220,Auto,*,Auto,250,Auto,360">

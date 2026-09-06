@@ -498,6 +498,8 @@ and your colours return. Nothing is deleted either way.
 | `Ctrl+R` | Re-layout |
 | `F2` | Rename the selection |
 | `Delete` | Delete the selection |
+| `H` / `V` | Hand tool (pan) / select tool |
+| `Esc` | Back to selecting, and clear the selection |
 
 | Mouse | |
 |---|---|
@@ -507,9 +509,21 @@ and your colours return. Nothing is deleted either way.
 | Drag the green handle | Connect to another node |
 | Drag the background | Marquee-select |
 | Space / middle / right / `Ctrl` drag | Pan |
+| Drag with the hand tool | Pan with an ordinary left-drag |
 | Wheel | Scroll vertically |
 | `Shift`+wheel | Scroll horizontally |
 | `Ctrl`+wheel | Zoom about the pointer |
+
+### Getting around
+
+A plain left-drag on empty canvas draws a selection rectangle, as it does in
+Figma, Visio, draw.io and Excalidraw. If you would rather drag to move the view,
+press `H` or click **✋ Pan** in the toolbar — then a left-drag pans and nothing
+selects. `Esc` or `V` returns to selecting.
+
+If you only want to shift the view for a moment, hold **space** and drag: it
+pans while held and gives the canvas straight back. Right-drag and middle-drag
+always pan, whichever tool is active.
 
 ---
 
@@ -519,18 +533,59 @@ and your colours return. Nothing is deleted either way.
 CI, hooks and scripts.
 
 ```
-merpeeps read <file>                 print the Merpeeps block as JSON
-merpeeps validate <file>...          check invariants (exit 1 on failure)
-merpeeps strip <file>                print the plain mermaid to stdout
-merpeeps strip <file> --write        remove the metadata from the file
-merpeeps adopt <file> --positions <json>   freeze coordinates into the file
-merpeeps bake <file>                 plain mermaid with the styling baked in
-merpeeps svg <file>                  render to SVG — styling and icons included
-merpeeps preview <file>              self-contained HTML, rendered by real mermaid
-merpeeps conformance <samples.json>  run the render-free invariant suite
+inspect
+  merpeeps read <file>                 print the Merpeeps block as JSON
+  merpeeps describe <file>             structure as JSON, without the body
+  merpeeps describe <file> --positions   ... including stored coordinates
+  merpeeps validate <file>...          check invariants (exit 1 on failure)
+
+change
+  merpeeps edit <file> --ops <json|file|->   apply operations
+  merpeeps layout <file> [--engine <id>]     arrange, and store the result
+  merpeeps adopt <file> --positions <json>   freeze supplied coordinates in
+  merpeeps layout-engines              list the engines, as JSON
+
+export
+  merpeeps strip <file>                print the plain mermaid to stdout
+  merpeeps bake <file>                 plain mermaid with the styling baked in
+  merpeeps svg <file>                  render to SVG — styling and icons included
+  merpeeps preview <file>              self-contained HTML, rendered by real mermaid
+
+hand over
+  merpeeps open <file>                 open it in the Merpeeps editor
+
+development
+  merpeeps conformance <samples.json>  run the render-free invariant suite
 ```
 
-Build it as a single native binary with no runtime dependency:
+Everything under **change** prints to stdout and leaves your file alone. Add
+`--write` to edit in place, or `--out <path>` to write elsewhere. The same is
+true of `strip`. Commands that discard work should be ones you asked for.
+
+A two-operation edit, without a temporary file:
+
+```bash
+merpeeps edit diagram.mmd --write --ops \
+  '[{"op":"addNode","id":"cache","label":"Redis","shape":"cylinder"},
+    {"op":"connect","from":"api","to":"cache","kind":"dotted"}]'
+```
+
+The batch is all-or-nothing: if any operation fails, nothing is written and
+every error is reported at once. Untouched lines stay byte-identical, so the
+diff is the change and nothing else.
+
+Then arrange it and hand it over:
+
+```bash
+merpeeps layout diagram.mmd --engine tree --write
+merpeeps open diagram.mmd
+```
+
+`open` finds the editor next to the `merpeeps` binary, or in the matching build
+of a working tree. Set `MERPEEPS_APP` to point it somewhere specific. It returns
+as soon as the window is starting rather than waiting for you to finish.
+
+Build the CLI as a single native binary with no runtime dependency:
 
 ```bash
 dotnet publish src/Merpeeps.Cli -c Release -r linux-x64
@@ -553,12 +608,35 @@ diagrams without a screen or a screenshot:
 merpeeps_describe        merpeeps_read_metadata   merpeeps_validate
 merpeeps_edit            merpeeps_layout          merpeeps_layout_engines
 merpeeps_set_positions   merpeeps_strip           merpeeps_bake
-merpeeps_svg
+merpeeps_svg             merpeeps_open
 ```
 
 Point your agent at `src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll` over
 stdio. The tools are deliberately token-cheap: `merpeeps_describe` returns a
 compact summary rather than the whole file.
+
+Every one of those has a CLI verb, and every CLI verb has a tool, with two
+stated exceptions: `preview` needs the vendored mermaid bundle, which the MCP
+server would otherwise carry to duplicate what `svg` and `open` already do, and
+`conformance` tests the tool rather than a diagram. `oracle/surface-parity-test.mjs`
+enforces this, so neither surface can quietly grow a capability the other lacks.
+
+### What an agent should and should not write
+
+An agent can choose a diagram's **structure**, its **colours** and its **icons**,
+because all three follow from what the diagram means — a database node gets a
+database icon, related services share a colour.
+
+**Positions are different.** `merpeeps_layout` produces a defensible
+arrangement, but which of several defensible arrangements is the right one is a
+judgement, and a layout engine has no opinion about what you are trying to show.
+So the useful end of an automated workflow is `merpeeps_open`: compose the file,
+then hand it to someone with a canvas.
+
+This also means an agent writing a diagram into a chat reply should emit plain
+mermaid, or mermaid with an `x-merpeeps` block — both render identically in any
+stock renderer. There is nothing to lose by including the metadata and nothing
+to gain by inventing coordinates for it.
 
 ---
 

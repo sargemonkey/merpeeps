@@ -428,6 +428,22 @@ public partial class MainWindow
 
     // ------------------------------------------------------- styling preview
 
+    /// <summary>
+    /// The ordinary hint line.
+    /// </summary>
+    /// <remarks>
+    /// A constant because it is shown from two places — the XAML sets it at
+    /// startup and <see cref="SetStyling"/> restores it — and the two had
+    /// already drifted apart, so editing the visible one silently changed
+    /// nothing the moment anybody toggled styling. Panning leads, because the
+    /// gesture people miss is the one worth naming first.
+    /// </remarks>
+    internal const string CanvasHint =
+        "Pan: hold space, press H, or right-drag · Zoom: Ctrl+scroll · " +
+        "Double-click canvas to add, node or F2 to rename · " +
+        "drag a green handle to connect · click a link to select it · " +
+        "Delete removes · drag background to marquee-select";
+
     private void WireStylingToggle()
     {
         var toggle = Need<ToggleButton>("StylingToggle");
@@ -435,6 +451,43 @@ public partial class MainWindow
         {
             if (_suppressPanelEvents) return;
             SetStyling(toggle.IsChecked == true);
+        };
+    }
+
+    /// <summary>
+    /// Connect the pan button to the canvas tool, in both directions.
+    /// </summary>
+    /// <remarks>
+    /// <para>The button exists because panning was reported missing while four
+    /// gestures for it already worked. They were documented in the hint bar and
+    /// that was not enough: a capability with no visible control is one people
+    /// conclude you do not have. The gestures stay — this only makes them
+    /// findable.</para>
+    /// <para>Listening to <see cref="EditorCanvas.ToolChanged"/> matters as much
+    /// as setting the tool. H and Escape change it from the keyboard, and a
+    /// button that only wrote would then sit unlit while the canvas panned,
+    /// which is worse than having no button at all.</para>
+    /// </remarks>
+    private void WireHandToggle()
+    {
+        var toggle = Need<ToggleButton>("HandToggle");
+
+        toggle.IsCheckedChanged += (_, _) =>
+        {
+            if (_suppressPanelEvents) return;
+            _canvas.Tool = toggle.IsChecked == true ? CanvasTool.Hand : CanvasTool.Select;
+
+            // Keys only reach the canvas when it holds focus, and clicking the
+            // button takes it away — so Escape and H would stop working right
+            // after the one action most likely to be followed by them.
+            _canvas.Focus();
+        };
+
+        _canvas.ToolChanged += (_, _) =>
+        {
+            _suppressPanelEvents = true;
+            try { toggle.IsChecked = _canvas.Tool == CanvasTool.Hand; }
+            finally { _suppressPanelEvents = false; }
         };
     }
 
@@ -456,7 +509,7 @@ public partial class MainWindow
         finally { _suppressPanelEvents = false; }
 
         Need<TextBlock>("HintText").Text = on
-            ? "Double-click canvas to add · double-click node or F2 to rename · drag a green handle to connect · click a link to select it · Delete removes · scroll or right-drag to pan, Ctrl+scroll to zoom · drag background to marquee-select"
+            ? CanvasHint
             : "Showing the plain diagram — this is what a stock mermaid renderer draws. Merpeeps styling is hidden, not removed.";
 
         SyncStylingTooltip();

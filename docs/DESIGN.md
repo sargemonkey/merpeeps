@@ -84,7 +84,37 @@ a document keeps arranging newly added nodes the same way. `manual` means a
 person placed them, and nothing will move them.
 
 Agents get the same choice over MCP — `merpeeps_layout_engines` lists them,
-`merpeeps_layout` takes an `engine` argument.
+`merpeeps_layout` takes an `engine` argument. The CLI has both as
+`merpeeps layout-engines` and `merpeeps layout --engine`.
+
+### Two front ends, one engine
+
+The CLI and the MCP server are the same capabilities addressed differently: a
+script drives verbs, an agent drives tools. Keeping them equal is not
+housekeeping. They drifted once — layout was reachable from an agent and not
+from a script — and nothing failed, because each surface's tests passed on its
+own terms. A gap *between* two components is invisible to tests that only look
+at one of them.
+
+`oracle/surface-parity-test.mjs` compares them, and requires a written reason
+for any asymmetry rather than merely tolerating one. Two are declared:
+`preview` needs the vendored mermaid bundle, megabytes the MCP server would
+carry to duplicate what `svg` and `open` already cover; and `conformance` runs
+the spec suite over a corpus, so it tests the tool rather than operating on a
+diagram.
+
+### Where automation stops
+
+`merpeeps open` and `merpeeps_open` hand a file to the editor, and they exist
+because of a limit worth being explicit about. Structure, colour and icons all
+follow from what a diagram means, so a program can choose them well. Position
+does not. A layout engine produces a defensible arrangement, but *which*
+defensible arrangement is right depends on what you are trying to show, and no
+engine has an opinion about that.
+
+So an automated workflow should compose the diagram, optionally arrange it as a
+starting point, and then stop — at a window, with a person in front of it. That
+is not a gap in the tooling; it is the shape of the problem.
 
 ### Freezing a layout you can't compute: harvesting
 

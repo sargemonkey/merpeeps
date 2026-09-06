@@ -89,6 +89,21 @@ GitHub, GitLab and Notion embed mermaid as-is, so almost nowhere has the plugin.
 that renders them unaided — and tells you what it could not carry, because
 positions and icons have no equivalent in mermaid syntax.
 
+## Agents can write these files
+
+An MCP server and a CLI expose the same eleven operations, so an agent or a
+script can compose a diagram, style it, and lay it out:
+
+```bash
+merpeeps edit diagram.mmd --write --ops '[{"op":"addNode","id":"cache","label":"Redis"}]'
+merpeeps layout diagram.mmd --engine tree --write
+merpeeps open diagram.mmd          # hand it to a person
+```
+
+That last line is the point. Structure, colour and icons follow from what a
+diagram means, so a program can choose them. Where a node belongs on the page is
+a judgement — so the end of an automated workflow is a window, not a guess.
+
 ## Packages
 
 | Package | Registry | What it is |

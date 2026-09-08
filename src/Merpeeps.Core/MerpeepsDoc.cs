@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using YamlDotNet.Core;
@@ -323,7 +324,11 @@ public static class MerpeepsDoc
         System.Collections.IDictionary d => ToDict(d),
         System.Collections.IList l => l.Cast<object?>().Select(Normalise).ToList(),
         // Enums, DateTime, records, anything else: stringify rather than hand
-        // the serialiser a type it can only inspect by reflection.
+        // the serialiser a type it can only inspect by reflection. Invariantly
+        // where the type offers the choice, because this runs before ToJson and
+        // would otherwise bake the machine's locale into the string a
+        // comma-decimal or dd.MM.yyyy machine produced.
+        IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
         _ => v.ToString(),
     };
 
@@ -410,6 +415,21 @@ public static class MerpeepsDoc
                     }
                     sb.Append(']');
                     break;
+
+                // Numbers, formatted invariantly — the one branch that made
+                // this method locale-dependent. `0.5` on a comma-decimal
+                // machine produced `"labelT":0,5`, which is not that value
+                // spelled differently but a different document: the carrier is
+                // re-read as YAML, and the flow mapping parses as `labelT: 0`
+                // followed by a second key `5` holding nothing. Nothing throws.
+                //
+                // IFormattable covers every numeric type at once, and also the
+                // enums, dates and TimeSpans that Normalise leaves for the
+                // default branch — all of which format differently by locale.
+                case IFormattable n:
+                    sb.Append(n.ToString(null, CultureInfo.InvariantCulture));
+                    break;
+
                 default: sb.Append(v.ToString()); break;
             }
         }

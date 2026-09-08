@@ -263,4 +263,149 @@ public class CrossPlatformTests
             System.Globalization.CultureInfo.CurrentCulture = original;
         }
     }
+
+    // --------------------------------------------------- the comment carrier
+
+    /// <summary>
+    /// A fractional value written into the JSON carrier keeps its decimal
+    /// point.
+    /// </summary>
+    /// <remarks>
+    /// <para>The carrier is JSON, and JSON has exactly one numeric grammar. A
+    /// comma-decimal locale turned <c>labelT: 0.5</c> into <c>"labelT":0,5</c>,
+    /// which is not that value written oddly — it is a different document. The
+    /// carrier is re-read as YAML, and YAML obligingly parses the flow mapping
+    /// as <c>labelT: 0</c> followed by a second key <c>5</c> with no value. The
+    /// edge label silently jumps to the start of the edge and the file grows a
+    /// key nothing wrote.</para>
+    /// <para>Nothing errors, which is what makes it worth a test: the failure
+    /// is a plausible-looking document that means something else.</para>
+    /// </remarks>
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("fr-FR")]
+    [InlineData("ru-RU")]
+    public void TheCommentCarrierKeepsADecimalPoint(string culture)
+    {
+        var original = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture =
+                new System.Globalization.CultureInfo(culture);
+
+            var merpeeps = new Dictionary<string, object?>
+            {
+                ["spec"] = 1L,
+                ["edges"] = new Dictionary<string, object?>
+                {
+                    ["a->b#0"] = new Dictionary<string, object?> { ["labelT"] = 0.5 },
+                },
+            };
+
+            var written = MerpeepsDoc.Serialise(LfDoc, merpeeps, carrier: "comment");
+
+            Assert.Contains("0.5", written);
+            Assert.DoesNotContain("0,5", written);
+
+            // The value has to survive the round trip as a number, not merely
+            // appear correct in the text.
+            var reloaded = (Dictionary<string, object?>)MerpeepsDoc.Parse(written)!;
+            var edges = (Dictionary<string, object?>)reloaded["edges"]!;
+            var edge = (Dictionary<string, object?>)edges["a->b#0"]!;
+
+            Assert.Equal(0.5, Assert.IsType<double>(edge["labelT"]), 6);
+
+            // And the mis-parse must not have invented a sibling key.
+            Assert.Equal(["labelT"], edge.Keys.OrderBy(k => k, StringComparer.Ordinal));
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    /// <summary>
+    /// The same document produces the same carrier on every machine.
+    /// </summary>
+    /// <remarks>
+    /// Stated as an equality rather than a spelling, because that is the
+    /// property that actually matters: two developers in different locales
+    /// committing the same edit should produce no diff.
+    /// </remarks>
+    [Fact]
+    public void TheCarrierIsByteIdenticalAcrossLocales()
+    {
+        var original = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            var merpeeps = new Dictionary<string, object?>
+            {
+                ["spec"] = 1L,
+                ["layout"] = new Dictionary<string, object?>
+                {
+                    ["nodes"] = new Dictionary<string, object?>
+                    {
+                        ["a"] = new Dictionary<string, object?>
+                        {
+                            ["x"] = 12.5, ["y"] = 0.25,
+                        },
+                    },
+                },
+            };
+
+            System.Globalization.CultureInfo.CurrentCulture =
+                System.Globalization.CultureInfo.InvariantCulture;
+            var invariant = MerpeepsDoc.Serialise(LfDoc, merpeeps, carrier: "comment");
+
+            System.Globalization.CultureInfo.CurrentCulture =
+                new System.Globalization.CultureInfo("de-DE");
+            var german = MerpeepsDoc.Serialise(LfDoc, merpeeps, carrier: "comment");
+
+            Assert.Equal(invariant, german);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="MerpeepsDoc.ToJson"/> is also the comparison key for the
+    /// round-trip checks in <c>merpeeps validate</c> and the MCP server, so a
+    /// locale-dependent rendering would make a file appear to fail validation
+    /// on one machine and pass on another.
+    /// </summary>
+    [Fact]
+    public void ToJsonRendersNumbersInvariantly()
+    {
+        var original = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture =
+                new System.Globalization.CultureInfo("de-DE");
+
+            var values = new Dictionary<string, object?>
+            {
+                ["d"] = 0.5,
+                ["f"] = 1.25f,
+                ["m"] = 2.75m,
+                ["negative"] = -0.5,
+                ["whole"] = 3L,
+            };
+
+            var json = MerpeepsDoc.ToJson(values);
+
+            Assert.DoesNotContain(",5", json);
+            Assert.DoesNotContain(",25", json);
+            Assert.DoesNotContain(",75", json);
+            Assert.Contains("0.5", json);
+            Assert.Contains("1.25", json);
+            Assert.Contains("2.75", json);
+            Assert.Contains("-0.5", json);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
 }

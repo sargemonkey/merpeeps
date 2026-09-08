@@ -219,7 +219,7 @@ MIT — see [`LICENSE`](./LICENSE).
 
 **Not affiliated with, endorsed by, or sponsored by Mermaid Chart Inc. or the
 Mermaid open-source project.** "Mermaid" is used here only to describe the file
-format this tool reads and writes. See [`TRADEMARKS.md`](./TRADEMARKS.md).
+format this tool reads and writes.
 
 ---
 
@@ -230,7 +230,6 @@ format this tool reads and writes. See [`TRADEMARKS.md`](./TRADEMARKS.md).
 | [Repository](https://github.com/sargeMonkey/merpeeps) | Source, issues, and the full story |
 | [Visual editor](https://github.com/sargeMonkey/merpeeps/blob/main/docs/GUIDE.md) | A desktop app for placing the boxes — this package renders what it saves |
 | [SPEC.md](SPEC.md) | The stored format, and what a reader must do with it |
-| [TRADEMARKS.md](TRADEMARKS.md) | Why "mermaid" appears in the package name |
 
 MIT licensed. Not affiliated with, endorsed by, or sponsored by Mermaid Chart
 Inc. or the Mermaid open-source project.

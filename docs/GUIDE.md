@@ -675,4 +675,3 @@ colleague's icons: a missing tool must never cost you data.
   measured rather than assumed
 - [SPEC.md](../SPEC.md) — the file format
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — building, testing, and the gate suite
-- [TRADEMARKS.md](../TRADEMARKS.md) — the naming position

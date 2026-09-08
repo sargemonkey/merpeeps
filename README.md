@@ -153,5 +153,4 @@ MIT — see [LICENSE](LICENSE).
 
 Not affiliated with, endorsed by, or sponsored by Mermaid Chart Inc., the Mermaid
 open-source project, or The Walt Disney Company. "Mermaid" is used descriptively,
-to name the file format these tools read and write. The reasoning, and what the
-project deliberately does not do, is in [TRADEMARKS.md](TRADEMARKS.md).
+to name the file format these tools read and write.

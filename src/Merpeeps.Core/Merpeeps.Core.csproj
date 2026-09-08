@@ -9,9 +9,7 @@
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>
 
-  <!-- NuGet metadata. Deliberately no "Mermaid" in the package id: the name
-       describes the format we define, and Mermaid is named only descriptively
-       in the summary. See TRADEMARKS.md. -->
+  <!-- NuGet metadata. -->
   <PropertyGroup>
     <PackageId>Merpeeps.Core</PackageId>
     <Version>0.1.0</Version>

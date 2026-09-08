@@ -158,8 +158,8 @@ fine. Gates read `oracle/fixtures/` instead. Keep it that way.
 
 Read [TRADEMARKS.md](TRADEMARKS.md) before naming anything new. The short version:
 "Mermaid" is used descriptively, to name the file format, and is never the
-distinguishing element of one of our own names. [PUBLISHING.md](PUBLISHING.md)
-has the rules for package names specifically.
+distinguishing element of one of our own names. The same document has the rules
+for package names specifically.
 
 ---
 

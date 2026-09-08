@@ -146,7 +146,6 @@ round-trip, they just have no tailored editor.
 | [Design notes](docs/DESIGN.md) | Why it is built this way, and what was measured rather than assumed |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Building, and how this project decides it is correct |
 | [CHANGELOG.md](CHANGELOG.md) | What changed |
-| [PUBLISHING.md](PUBLISHING.md) | Releasing the packages |
 
 ## Licence and naming
 

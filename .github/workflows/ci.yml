@@ -296,11 +296,24 @@ jobs:
 
       # A binary that links but cannot parse is worse than one that fails to
       # build, so run the real conformance suite through it.
+      #
+      # The path is spelled out rather than searched for. `find ... -name
+      # merpeeps -path '*publish*' | head -n1` looks equivalent and is not: on
+      # macOS the publish directory also contains
+      # `merpeeps.dSYM/Contents/Resources/DWARF/merpeeps`, a debug-symbol file
+      # with the same name, under a path containing "publish", and a regular
+      # file — so it matches every predicate. `find` does not promise an order,
+      # so `head -n1` picked it, and running a symbol bundle exits 126 and
+      # blocked the artifact upload behind it.
       - name: Smoke-test the native binary
         shell: bash
         run: |
-          bin=$(find src/Merpeeps.Cli/bin -path '*publish*' -name '${{ matrix.exe }}' -type f | head -n1)
-          if [ -z "$bin" ]; then echo "native binary not produced"; exit 1; fi
+          bin="src/Merpeeps.Cli/bin/Release/net10.0/${{ matrix.rid }}/publish/${{ matrix.exe }}"
+          if [ ! -f "$bin" ]; then
+            echo "no native binary at $bin; publish produced:"
+            find src/Merpeeps.Cli/bin -path '*publish*' -name '${{ matrix.exe }}' -type f
+            exit 1
+          fi
           echo "size: $(du -h "$bin" | cut -f1)"
           chmod +x "$bin"
           "$bin" conformance oracle/samples.json
@@ -308,5 +321,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: merpeeps-cli-${{ matrix.rid }}
-          path: src/Merpeeps.Cli/bin/**/publish/${{ matrix.exe }}
+          path: src/Merpeeps.Cli/bin/Release/net10.0/${{ matrix.rid }}/publish/${{ matrix.exe }}
 

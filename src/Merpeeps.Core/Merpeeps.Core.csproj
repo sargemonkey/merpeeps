@@ -12,7 +12,7 @@
   <!-- NuGet metadata. -->
   <PropertyGroup>
     <PackageId>Merpeeps.Core</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Authors>Merpeeps contributors</Authors>
     <Description>Store diagram layout positions, styling and metadata inside ordinary Mermaid files, without changing what they render. Reference implementation of the Merpeeps format.</Description>
     <PackageTags>mermaid;diagram;layout;graph;flowchart;frontmatter;merpeeps</PackageTags>

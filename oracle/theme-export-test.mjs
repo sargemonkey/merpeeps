@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { inject, parse } from '../packages/merpeeps-mermaid-layout/src/index.js';
+import { inject, parse } from 'merpeeps-mermaid-layout';
 
 const repo = resolve(import.meta.dirname, '..');
 const cli = process.env.MERPEEPS_TEST_CLI ?? join(repo, 'src', 'Merpeeps.Cli', 'bin', 'Release', 'net10.0', 'merpeeps.dll');

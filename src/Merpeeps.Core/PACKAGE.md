@@ -1,12 +1,24 @@
 # Merpeeps.Core
 
-Store diagram **layout positions, styling and metadata inside ordinary Mermaid
-files** — without changing what they render.
+**Create, edit, enhance and render Mermaid diagrams from C#.**
 
-Mermaid has no coordinate system, so there is nowhere in its syntax to record
-where a node should sit. Merpeeps puts that information under an unknown YAML
-frontmatter key, which every Mermaid diagram type ignores. Your tool reads the
-positions; every other tool sees a perfectly ordinary diagram.
+Merpeeps.Core provides native models and authoring entry points for **33 diagram
+families and 48 dialects**, including UML, entity relationships, sequences,
+charts, architecture, schedules, workflows, hierarchies and grammars. It powers
+Merpie's desktop editor and the Merpeeps CLI/MCP tools.
+
+The engine includes diagram-specific parsing, reversible edit commands, source
+saving, styling and icon enhancements, family-appropriate layout and SVG
+rendering. Generic graph layout and free positioning are available where they
+fit the diagram's model; other families use dates, values, ordering, ownership
+or hierarchy.
+
+Edited diagrams remain Mermaid source. Additional presentation data can be
+stored inside the `.mmd` file using `x-merpeeps` metadata, which standard Mermaid
+renderers ignore. Family coverage does not imply complete upstream feature
+parity; check capabilities and diagnostics for imported source.
+
+## Preserve presentation alongside Mermaid source
 
 ```csharp
 using Merpeeps.Core;

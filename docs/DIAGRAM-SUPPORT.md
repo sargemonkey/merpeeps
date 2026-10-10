@@ -50,8 +50,13 @@ Packed-package consumer tests exercise empty and populated fixtures for every
 dialect. This proves package wiring and representative round trips, not every
 shape, theme, input gesture or upstream grammar production.
 
-Known preview limitations: imported fixed-color diagram labels can have poor
-contrast with dark app chrome; transparent export is not yet exposed. Use light
-app appearance for those imported documents. Static images do not automatically
-recolor when their embedding page changes theme. Native accessibility, exact
-PowerPoint fidelity and complete external viewer acceptance are not claimed.
+Inherited graph labels adapt to the actual composited surface, including
+imported light/pastel and translucent fills. Explicit authored text/stroke
+colors remain unchanged, including low-contrast choices. SVG export offers
+document/light/dark appearance and an independent transparent outer canvas;
+intentional fills and label backplates remain.
+
+Known preview limitations: static images do not automatically recolor when
+their embedding page changes theme. Native accessibility, complete upstream
+feature parity and exact rendering equivalence across external viewers are
+not yet fully accepted.

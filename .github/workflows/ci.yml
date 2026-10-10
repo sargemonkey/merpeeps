@@ -333,7 +333,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
 
       - name: Publish CLI as a single native binary
-        run: dotnet publish src/Merpeeps.Cli -c Release -r ${{ matrix.rid }}
+        run: dotnet publish src/Merpeeps.Cli -c Release -r ${{ matrix.rid }} -o artifacts/native-cli/${{ matrix.rid }}
 
       # A binary that links but cannot parse is worse than one that fails to
       # build, so run the real conformance suite through it.
@@ -349,10 +349,10 @@ jobs:
       - name: Smoke-test the native binary
         shell: bash
         run: |
-          bin="src/Merpeeps.Cli/bin/Release/net10.0/${{ matrix.rid }}/publish/${{ matrix.exe }}"
+          bin="artifacts/native-cli/${{ matrix.rid }}/${{ matrix.exe }}"
           if [ ! -f "$bin" ]; then
             echo "no native binary at $bin; publish produced:"
-            find src/Merpeeps.Cli/bin -path '*publish*' -name '${{ matrix.exe }}' -type f
+            find artifacts/native-cli -name '${{ matrix.exe }}' -type f
             exit 1
           fi
           echo "size: $(du -h "$bin" | cut -f1)"
@@ -362,4 +362,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: merpeeps-cli-${{ matrix.rid }}
-          path: src/Merpeeps.Cli/bin/Release/net10.0/${{ matrix.rid }}/publish/${{ matrix.exe }}
+          path: artifacts/native-cli/${{ matrix.rid }}/${{ matrix.exe }}

@@ -197,6 +197,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Install the linked companion's own dependencies
+        run: npm ci --prefix ../packages/merpeeps-mermaid-layout --no-audit --no-fund
+
       # Ubuntu runners have no system Chrome, so use Playwright's bundled build.
       - run: npx playwright install --with-deps chromium
 

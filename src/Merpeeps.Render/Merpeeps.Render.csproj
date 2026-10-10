@@ -15,7 +15,7 @@
     <IsPackable>true</IsPackable>
     <IsAotCompatible>true</IsAotCompatible>
     <PackageId>Merpeeps.Render</PackageId>
-    <Version>0.2.0-preview.1</Version>
+    <Version>0.2.0-preview.2</Version>
     <Authors>Merpeeps contributors</Authors>
     <Description>Offline Mermaid reference rendering and syntax-validation assets for native hosts.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

@@ -85,6 +85,7 @@ static int Usage()
           merpeeps strip <file>                print the plain mermaid to stdout
           merpeeps bake <file>                 plain mermaid with the styling baked in
           merpeeps svg <file>                  render to SVG — styling and icons included
+          merpeeps svg <file> --theme dark --transparent  dark appearance, no painted outer canvas
           merpeeps preview <file>              self-contained HTML, rendered by real mermaid
           merpeeps preview <file> --plain      as a stock renderer draws it, ignoring Merpeeps
 
@@ -472,6 +473,7 @@ static int Strip(string[] a)
 /// </remarks>
 static int Svg(string[] a)
 {
+    var transparent = a.Contains("--transparent");
     var outIndex = Array.FindIndex(a, x => x is "--out" or "-o");
     string? outPath = null;
     if (outIndex >= 0)
@@ -491,14 +493,14 @@ static int Svg(string[] a)
     var consumed = new HashSet<int>();
     if (outIndex >= 0) { consumed.Add(outIndex); consumed.Add(outIndex + 1); }
     if (themeIndex >= 0) { consumed.Add(themeIndex); consumed.Add(themeIndex + 1); }
-    var files = a.Where((_, i) => !consumed.Contains(i)).ToArray();
+    var files = a.Where((x, i) => !consumed.Contains(i) && x != "--transparent").ToArray();
 
     if (files.Length < 1) return Fail("svg requires a file");
     if (!File.Exists(files[0])) return Fail($"no such file: {files[0]}");
 
     var source = File.ReadAllText(files[0]);
     var model = MerpeepsDocument.Load(source);
-    var svg = SvgExporter.ToSvg(model, theme, model.Gantt is null ? null : new GanttEvaluationContext(DateTimeOffset.Now, TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture));
+    var svg = SvgExporter.ToSvg(model, theme, model.Gantt is null ? null : new GanttEvaluationContext(DateTimeOffset.Now, TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture), transparent);
 
     if (outPath is null) Console.Out.Write(svg);
     else
@@ -636,6 +638,7 @@ static int Preview(string[] a)
 {
     var plain = a.Contains("--plain") || a.Contains("-p");
     var dark = a.Contains("--dark");
+    var transparent = a.Contains("--transparent");
 
     var outIndex = Array.FindIndex(a, x => x is "--out" or "-o");
     string? outPath = null;
@@ -659,7 +662,7 @@ static int Preview(string[] a)
     }
 
     var files = a.Where((x, i) =>
-        x is not ("--plain" or "-p" or "--dark" or "--out" or "-o" or "--layout" or "-l")
+        x is not ("--plain" or "-p" or "--dark" or "--transparent" or "--out" or "-o" or "--layout" or "-l")
         && (outIndex < 0 || i != outIndex + 1)
         && (layoutIndex < 0 || i != layoutIndex + 1)).ToArray();
 
@@ -671,7 +674,7 @@ static int Preview(string[] a)
     // --plain shows what a stock renderer draws, which is the comparison that
     // matters: it is what every platform embedding mermaid will show.
     var mode = plain ? RenderAssets.Mode.Stock : RenderAssets.Mode.WithMerpeeps;
-    var html = RenderAssets.BuildShell(mode, dark, source, layoutName);
+    var html = RenderAssets.BuildShell(mode, dark, source, layoutName, transparent);
 
     if (outPath is null) { Console.Out.Write(html); return 0; }
 

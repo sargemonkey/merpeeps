@@ -154,6 +154,13 @@ const svgId = send('tools/call', { name: 'merpeeps_svg', arguments: { path: file
 await awaitId(svgId);
 const rendered = resultOf(svgId);
 
+const transparentPath = join(dir, 'transparent.svg');
+const transparentId = send('tools/call', { name: 'merpeeps_svg', arguments: {
+  path: file, outPath: transparentPath, theme: 'dark', transparentBackground: true,
+} });
+await awaitId(transparentId);
+const transparent = resultOf(transparentId);
+
 const bakeId = send('tools/call', { name: 'merpeeps_bake', arguments: { path: file } });
 await awaitId(bakeId);
 const baked = resultOf(bakeId);
@@ -212,6 +219,9 @@ const checks = {
   // The control. Rendering must reflect the diagram, not emit a fixed page.
   svgContainsTheDiagram: rendered?.ok === true
     && readFileSync(svgPath, 'utf8').includes('Redis'),
+  transparentSvg: transparent?.ok === true
+    && readFileSync(transparentPath, 'utf8').includes('data-canvas-background="transparent"')
+    && !readFileSync(transparentPath, 'utf8').includes('data-canvas-background="true"'),
 
   baked: baked?.ok === true && typeof baked?.text === 'string'
     && baked.text.includes('flowchart'),
@@ -238,5 +248,4 @@ console.log(finalText);
 const ok = Object.values(checks).every(v => v === true || typeof v === 'number' && v > 0);
 console.log(ok ? 'AGENT WORKFLOW PASSED' : 'AGENT WORKFLOW FAILED');
 process.exit(ok ? 0 : 1);
-
 

@@ -33,6 +33,14 @@
                   ToolTip.Tip="Write plain mermaid that keeps the colours, as native style statements every renderer understands. Positions and icons cannot be expressed in mermaid syntax and are dropped."/>
         <MenuItem Name="MenuExportSvg" Header="Export as S_VG…"
                   ToolTip.Tip="Write a picture of the diagram as you see it here, icons and all"/>
+        <MenuItem Header="SVG export _options">
+          <MenuItem Name="MenuSvgDocument" Header="_Document appearance" ToggleType="Radio" GroupName="SvgAppearance" IsChecked="True"/>
+          <MenuItem Name="MenuSvgLight" Header="_Light appearance" ToggleType="Radio" GroupName="SvgAppearance"/>
+          <MenuItem Name="MenuSvgDark" Header="_Dark appearance" ToggleType="Radio" GroupName="SvgAppearance"/>
+          <Separator/>
+          <MenuItem Name="MenuSvgTransparent" Header="_Transparent canvas" ToggleType="CheckBox"
+                    ToolTip.Tip="No outer background. Authored node, group and label fills stay; static ink does not adapt to an embedding page."/>
+        </MenuItem>
         <MenuItem Name="MenuSample" Header="Load s_ample"/>
         <Separator/>
         <MenuItem Name="MenuExit"   Header="E_xit"/>

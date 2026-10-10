@@ -16,6 +16,7 @@ public static partial class SvgExporter
             var stroke = figure.Stroke?.Css ?? "none";
             var fill = figure.Fill?.Css ?? "none";
             var attributes = $"data-sequence-owner=\"{Esc(figure.OwnerId)}\" data-sequence-kind=\"{figure.ElementKind}\" fill=\"{Esc(fill)}\" stroke=\"{Esc(stroke)}\" stroke-width=\"{N(figure.StrokeWidth)}\"";
+            if (figure.Id == "sequence-background") attributes += " data-canvas-background=\"true\"";
             if (figure.Dashed) attributes += " stroke-dasharray=\"4,4\"";
             var bounds = figure.Bounds;
             switch (figure.Kind)

@@ -165,14 +165,17 @@ public static class RenderAssets
     /// <param name="layout">
     /// A name from <see cref="Layouts"/>. Null leaves mermaid on its default.
     /// </param>
-    public static string BuildShell(Mode mode, bool dark, string? autoRender, string? layout)
+    public static string BuildShell(Mode mode, bool dark, string? autoRender, string? layout) =>
+        BuildShell(mode, dark, autoRender, layout, transparentBackground: false);
+
+    public static string BuildShell(Mode mode, bool dark, string? autoRender, string? layout, bool transparentBackground)
     {
         var sb = new StringBuilder(MermaidBundle.Length + 400_000);
 
         sb.Append("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\">\n<style>\n")
           .Append("html,body{margin:0;padding:0;height:100%;overflow:auto;")
           .Append("font-family:system-ui,-apple-system,'Segoe UI',sans-serif}\n")
-          .Append("body{background:").Append(dark ? "#1e1e1e" : "#ffffff")
+          .Append("body{background:").Append(transparentBackground ? "transparent" : dark ? "#1e1e1e" : "#ffffff")
           .Append(";color:").Append(dark ? "#dddddd" : "#222222").Append("}\n")
           .Append("#stage{padding:16px;box-sizing:border-box}\n")
           .Append("#err{display:none;white-space:pre-wrap;padding:12px;margin:12px;")
@@ -182,7 +185,7 @@ public static class RenderAssets
 
         // Classic script: the UMD bundle must define its global before any module runs.
         sb.Append("<script>\n").Append(MermaidBundle).Append("\n</script>\n");
-        sb.Append("<script type=\"module\">\n").Append(Bootstrap(mode, dark, layout)).Append("\n</script>\n");
+        sb.Append("<script type=\"module\">\n").Append(Bootstrap(mode, dark, layout, transparentBackground)).Append("\n</script>\n");
 
         if (autoRender is not null)
             sb.Append("<script type=\"module\">\n").Append(AutoRender(autoRender)).Append("\n</script>\n");
@@ -196,9 +199,10 @@ public static class RenderAssets
     /// Resolve mermaid's global, optionally load our published plugin through
     /// rewritten blob URLs, and expose one render entry point.
     /// </summary>
-    private static string Bootstrap(Mode mode, bool dark, string? layout)
+    private static string Bootstrap(Mode mode, bool dark, string? layout, bool transparentBackground)
     {
         var sb = new StringBuilder();
+        sb.Append("window.merpeepsCanvasColor = '").Append(dark ? "#1e1e1e" : "#ffffff").Append("';\n");
 
         sb.Append("""
             const stage = document.getElementById('stage');
@@ -383,6 +387,21 @@ public static class RenderAssets
 
             """);
 
+        if (transparentBackground)
+            sb.Append("""
+                const renderWithBackground = window.merpeepsRender;
+                window.merpeepsRender = async (...args) => {
+                  await renderWithBackground(...args);
+                  const svg = stage.querySelector('svg');
+                  if (!svg) throw new Error('No rendered SVG to make transparent.');
+                  svg.style.setProperty('background', 'transparent', 'important');
+                  for (const rect of [...svg.children].filter(n => n.tagName.toLowerCase() === 'rect')) {
+                    if (rect.getAttribute('width') === '100%' && rect.getAttribute('height') === '100%') rect.remove();
+                  }
+                  return svg.outerHTML;
+                };
+
+                """);
         sb.Append("\nconst geometryModule = await import(");
         if (mode == Mode.WithMerpeeps) sb.Append("moduleUrl('./rendered-geometry.js')");
         else sb.Append("URL.createObjectURL(new Blob([").Append(JsLiteral(Text("Merpeeps.Render.Assets.rendered-geometry.js"))).Append("], {type:'text/javascript'}))");

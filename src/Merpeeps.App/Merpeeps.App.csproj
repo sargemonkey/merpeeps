@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Merpie.App</AssemblyName>
-    <Version>0.1.0-preview.1</Version>
+    <Version>0.1.0-preview.2</Version>
     <RootNamespace>Merpeeps.App</RootNamespace>
     <Product>Merpie</Product>
     <Title>Merpie</Title>

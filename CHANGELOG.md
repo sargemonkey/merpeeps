@@ -8,6 +8,34 @@ All notable changes to this project are documented here. The format follows
 
 No changes recorded after the preview release candidate.
 
+## [0.1.0-preview.2] - 2026-10-10
+
+Draft-only successor; preview.1 tag/assets remain immutable. Desktop/CLI/MCP
+`0.1.0-preview.2`, Core/Render/npm `0.2.0-preview.2`, Scene `0.1.0-preview.2`
+(version-only increment, no Scene API change).
+
+### Fixed
+
+- Inherited graph ink resolves against actual node/group/label surfaces in native
+  editing, static SVG and imported browser replay, including nested alpha fills
+  and moved groups. True black/white fallback covers mid-luminance surfaces that
+  previously fell below 4.5:1. Explicit authored colors stay unchanged.
+- Connector contrast halos retain one semantic route; translated browser replay
+  and subsequent harvest do not duplicate routes or alter saved geometry.
+- Native graph CSS alpha uses RGBA order consistently with SVG/browser paint.
+
+### Added
+
+- Independent document/light/dark SVG appearance and transparent outer canvas
+  controls. CLI SVG/preview accept `--transparent`; MCP SVG exposes
+  `transparentBackground`. Default filled output and document/history stay
+  unchanged. Intentional fills/backplates remain, with no new PNG export stack.
+- Native pixel, neutral-surface/nested-fill, all-dialect packed SVG and offline
+  browser contrast/geometry/PNG-alpha checks in release automation.
+- Human platform acceptance checklist and availability-only signing readiness
+  inspection. Actual signing/notarization and human usability reports remain
+  blocked/pending, not inferred from CI.
+
 ## [0.1.0-preview.1] - 2026-10-10
 
 Draft release candidate; publishing the draft and package registries remain

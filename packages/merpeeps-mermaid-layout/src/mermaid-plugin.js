@@ -60,7 +60,7 @@ export async function renderWithLayout(mermaid, id, text, container) {
   if (rendered) {
     const result = await mermaid.render(id, text, container);
     const styled = styleSvg(result.svg, styles);
-    return { ...result, svg: replayRenderedGeometry(styled, rendered, positions, id) };
+    return { ...result, svg: replayRenderedGeometry(styled, rendered, positions, id, styles) };
   }
 
   const hasPositions = Object.keys(positions).length > 0;

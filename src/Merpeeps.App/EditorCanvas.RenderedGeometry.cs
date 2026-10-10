@@ -8,8 +8,13 @@ namespace Merpeeps.App;
 
 public sealed partial class EditorCanvas
 {
-    private static void DrawRenderedText(DrawingContext context, RenderedText label, IBrush ink)
+    private void DrawRenderedText(DrawingContext context, RenderedText label, IBrush ink, IBrush? surface = null, bool authoredInk = false)
     {
+        var beneath = _model is not null && label.Lines.Count > 0
+            ? DiagramContrast.SurfaceAt(_model, new(label.Lines[0].Bounds.X, label.Lines[0].Bounds.Y), BrushColor(_theme.Background))
+            : BrushColor(_theme.Background);
+        if (surface is not null) beneath = DiagramContrast.Composite(BrushColor(surface), beneath);
+        if (!authoredInk) ink = Brush(DiagramContrast.ReadableInk(BrushColor(ink), DiagramContrast.LabelSurface(label, beneath)));
         if (label.Background is { } background && label.Lines.Count > 0)
         {
             var left = label.Lines.Min(l => l.Bounds.X); var top = label.Lines.Min(l => l.Bounds.Y);
@@ -17,6 +22,7 @@ public sealed partial class EditorCanvas
             var fill = SequenceColors.TryParse(background, out var color) ? Brush(color) : new SolidColorBrush(ParseColor(background, Colors.Transparent));
             context.DrawRectangle(fill, null, new(left - 3, top - 2, right - left + 6, bottom - top + 4));
         }
+
         var family = label.FontFamily.Split(',')[0].Trim().Trim('\'', '"');
         var face = new Typeface(family is "system-ui" or "sans-serif" ? FontFamily.Default : new FontFamily(family),
             FontStyle.Normal, (FontWeight)label.FontWeight);
@@ -26,6 +32,13 @@ public sealed partial class EditorCanvas
             context.DrawText(text, new(line.Bounds.X + (line.Bounds.Width - text.Width) / 2,
                 line.Bounds.Y + (line.Bounds.Height - text.Height) / 2));
         }
+    }
+
+    private static ClassColor BrushColor(IBrush brush)
+    {
+        if (brush is not ISolidColorBrush solid) throw new NotSupportedException("Diagram contrast requires a solid surface.");
+        var c = solid.Color;
+        return new(c.R, c.G, c.B, (byte)Math.Round(c.A * solid.Opacity));
     }
 
     private void DrawGraphRoute(DrawingContext context, IReadOnlyList<DiagramPoint> route, IPen pen)

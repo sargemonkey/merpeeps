@@ -841,7 +841,7 @@ public partial class MainWindow
         var model = _canvas.Model;
         if (model is null) return;
         string svg;
-        try { svg = SvgExporter.ToSvg(model, evaluationContext: model.Gantt is null ? null : _canvas.GanttContext); }
+        try { svg = SvgForExport(); }
         catch (NotSupportedException error)
         {
             ShowInfo("SVG export unavailable", error.Message + "\n\nNothing was written. The source and diagram remain unchanged.");
@@ -859,6 +859,14 @@ public partial class MainWindow
         await File.WriteAllTextAsync(file.Path.LocalPath, svg);
         Need<TextBlock>("StatusText").Text =
             $"exported {Path.GetFileName(file.Path.LocalPath)}";
+    }
+
+    internal string SvgForExport()
+    {
+        var model = _canvas.Model ?? throw new InvalidOperationException("Open a diagram before exporting.");
+        var theme = Need<MenuItem>("MenuSvgDark").IsChecked ? "dark" : Need<MenuItem>("MenuSvgLight").IsChecked ? "default" : null;
+        return SvgExporter.ToSvg(model, theme, model.Gantt is null ? null : _canvas.GanttContext,
+            Need<MenuItem>("MenuSvgTransparent").IsChecked);
     }
 
     /// <summary>

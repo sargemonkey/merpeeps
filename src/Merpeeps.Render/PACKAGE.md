@@ -76,4 +76,11 @@ dimensions, wrapped label placement, groups and sampled routes in the source.
 Legacy position-only harvest/adoption remains available. Geometry replay is not
 a claim of identical native/browser pixels; changed content or incompatible
 endpoint arrangements require re-adoption. Application chrome, document colors
-and static export appearance are distinct; see prerelease known limitations.
+and static export appearance are distinct.
+
+`RenderAssets.BuildShell(mode, dark, source, layout, transparentBackground: true)`
+emits an offline preview without an opaque HTML/SVG outer canvas. It preserves
+node/group fills and label backplates. Imported inherited labels use actual
+composited surfaces, including nested and uniformly translated groups; explicit
+authored node text stays fixed. Defaults remain filled. A screenshot or exported
+SVG is static and will not adapt to a later host-page theme change.

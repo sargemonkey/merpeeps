@@ -264,6 +264,11 @@ jobs:
           MERPEEPS_ORACLE_CHANNEL: bundled
         run: node preview-page-test.mjs
 
+      - name: Inherited contrast and transparent SVG/PNG output
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: node theme-export-test.mjs
+
       # `bake` claims styling survives into plain mermaid with no plugin. That is
       # only worth anything if the colours actually match, so this compares three
       # renders — stripped, baked, and the plugin reference — rather than merely

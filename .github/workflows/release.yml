@@ -115,6 +115,21 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           npm pack ./packages/merpeeps-mermaid-layout --pack-destination artifacts/packages
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Verify offline browser contrast, geometry and output alpha
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: |
+          npm ci --prefix oracle --no-audit --no-fund
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Push-Location oracle
+          try {
+            npx playwright install --with-deps chromium
+            if ($LASTEXITCODE) { throw 'Browser acceptance dependency setup failed.' }
+          } finally { Pop-Location }
+          dotnet build src/Merpeeps.Cli -c Release --nologo -v quiet
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node oracle/theme-export-test.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: release-packages
@@ -151,8 +166,9 @@ jobs:
         run: |
           $info = ./scripts/get-release-info.ps1 -Tag $env:RELEASE_TAG
           $repo = $env:GITHUB_REPOSITORY
-          $existing = gh api "repos/$repo/releases/tags/$env:RELEASE_TAG" 2>$null
-          if ($LASTEXITCODE -eq 0) { throw 'A release already exists; refusing to overwrite its assets or state.' }
+          $existing = gh api --paginate "repos/$repo/releases?per_page=100" --jq ".[] | select(.tag_name == `"$env:RELEASE_TAG`") | .id"
+          if ($LASTEXITCODE) { throw 'Could not inspect existing releases; refusing to risk replacement.' }
+          if ($existing) { throw 'A release already exists; refusing to overwrite its assets or state.' }
           $sha = git rev-parse HEAD
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $files = @(Get-ChildItem artifacts/release -File | Sort-Object Name)

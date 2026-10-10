@@ -7,7 +7,7 @@
     <IsAotCompatible>true</IsAotCompatible>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <PackageId>Merpeeps.Scene</PackageId>
-    <Version>0.1.0-preview.1</Version>
+    <Version>0.1.0-preview.2</Version>
     <Authors>Merpeeps contributors</Authors>
     <Description>Renderer-independent visual scenes embedded in Markdown: stable object identity, geometry, text styling and diagram references.</Description>
     <PackageTags>merpeeps;scene;markdown;presentation;layout</PackageTags>

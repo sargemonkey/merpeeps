@@ -66,8 +66,8 @@ Publish, then package the existing output (PowerShell 7.3+ on any CI platform):
 
 ```powershell
 dotnet publish src\Merpeeps.App -c Release -r win-x64 --self-contained true -o out\app
-.\scripts\package-desktop.ps1 -AppPublishPath out\app -RuntimeIdentifier win-x64 -OutputDirectory artifacts\desktop -Version 0.1.0-preview.1 -SelfContained
-.\scripts\test-desktop-package.ps1 -PackagePath artifacts\desktop\merpie-0.1.0-preview.1-win-x64 -ArchivePath artifacts\desktop\merpie-0.1.0-preview.1-win-x64.zip
+.\scripts\package-desktop.ps1 -AppPublishPath out\app -RuntimeIdentifier win-x64 -OutputDirectory artifacts\desktop -Version 0.1.0-preview.2 -SelfContained
+.\scripts\test-desktop-package.ps1 -PackagePath artifacts\desktop\merpie-0.1.0-preview.2-win-x64 -ArchivePath artifacts\desktop\merpie-0.1.0-preview.2-win-x64.zip
 ```
 
 Use `linux-x64`, `osx-x64` or `osx-arm64` for the other CI targets. Self-contained
@@ -494,7 +494,23 @@ the same headless:
 ```
 merpeeps svg diagram.mmd --out diagram.svg
 merpeeps svg diagram.mmd --theme dark      # override the file's theme
+merpeeps svg diagram.mmd --theme dark --transparent --out diagram.svg
+merpeeps preview diagram.mmd --dark --transparent --out diagram.html
 ```
+
+**File > SVG export options** selects document, light or dark appearance and a
+separate **Transparent canvas** option. Defaults remain document appearance with
+a filled canvas. These choices do not edit source, positions or Undo history.
+The MCP `merpeeps_svg` tool has equivalent `theme` and `transparentBackground`
+arguments.
+
+Transparency removes the generated outer canvas, not intentional node/group
+fills, chart surfaces or label backplates. App chrome, authored diagram colors
+and output background are separate: inherited graph ink adapts to the actual
+composited surface, but explicitly authored text/stroke colors stay unchanged
+even when their chosen contrast is low. Static SVG (or a rasterization of it)
+does not automatically recolor when a host switches theme; choose an appearance
+matching the intended destination. There is no new product PNG exporter.
 
 It draws **what the editor shows** — the stored positions, the Merpeeps styling
 and the icons — not what stock mermaid would draw. That is deliberate: styling

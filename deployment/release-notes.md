@@ -1,6 +1,7 @@
-# Merpie 0.1.0-preview.1
+# Merpie 0.1.0-preview.2
 
-First **draft prerelease** of the native Merpie visual editor. Runtime-bundled
+Second **draft prerelease** of the native Merpie visual editor. Preview.1 stays
+unchanged. Runtime-bundled
 portable downloads cover Windows x64, Intel macOS x64, Apple Silicon macOS arm64
 and Linux x64; system native libraries and optional web engines still apply.
 
@@ -12,21 +13,39 @@ See `docs/DIAGRAM-SUPPORT.md` for capability boundaries, not universal parity.
 `x-merpeeps` saved data, the `merpeeps` CLI/MCP IDs and shared package names remain
 compatible. MerDeck is a separate product and is not released by this workflow.
 
+## Changes in preview.2
+
+Inherited graph labels now remain readable on fixed light/pastel and translucent
+surfaces under either app appearance. Native, static SVG and imported browser
+replay use actual composited surfaces; explicit authored colors stay unchanged.
+The fallback also covers mid-luminance fills previously below 4.5:1.
+
+File > SVG export options separates document/light/dark ink from a transparent
+outer canvas. CLI SVG/preview accept `--transparent`; MCP SVG exposes
+`transparentBackground`. Node/group fills and label backplates remain. Defaults
+stay filled, and appearance choices do not edit source, geometry or Undo history.
+Static SVG/PNG does not automatically recolor with a host theme.
+
+Release checks include actual offline browser ink, moved/nested groups,
+unduplicated routes and preview PNG/static SVG alpha. PNG rasterization here is
+QA, not a new product PNG exporter. Human acceptance and signing remain gates.
+
 ## Downloads and package artifacts
 
 - Desktop packages include approved Merpie ICO/PNG/ICNS artwork and a hashed
   manifest. Archive `.sha256` files and `SHA256SUMS` identify the attached bytes.
-- NuGet: `Merpeeps.Core 0.2.0-preview.1`, `Merpeeps.Render 0.2.0-preview.1`,
-  `Merpeeps.Scene 0.1.0-preview.1`, validated as actual packed consumers.
-- npm tarball: `merpeeps-mermaid-layout 0.2.0-preview.1`. This is a
+- NuGet: `Merpeeps.Core 0.2.0-preview.2`, `Merpeeps.Render 0.2.0-preview.2`,
+  `Merpeeps.Scene 0.1.0-preview.2`, validated as actual packed consumers.
+  Scene is a version-only increment; its API is unchanged.
+- npm tarball: `merpeeps-mermaid-layout 0.2.0-preview.2`. This is a
   metadata/layout/render-replay companion, **not a JS port of the C# typed
   authoring engine**. No registry uploads occur automatically.
 
 ## Known limitations and release status
 
-- Imported authored light/pastel surfaces can have unreadable inherited labels
-  in dark application chrome. Use **light app appearance** for those documents.
-  Transparent canvas/export controls and a unified contrast fix are pending.
+- Explicit authored text/stroke colors are preserved, including low-contrast
+  choices. Transparency is not theme-adaptive: choose output appearance matching
+  the embedding background.
 - The desktop packages are unsigned/unnotarized previews, not signed installers
   or automatic updaters. Do not bypass platform trust/security warnings to
   install them. macOS public distribution remains gated on signing/notarization.

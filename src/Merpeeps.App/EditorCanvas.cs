@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Merpeeps.Core.Editing;
 using Merpeeps.Core.Model;
+using Merpeeps.Core.Parsing;
 
 namespace Merpeeps.App;
 
@@ -464,7 +465,9 @@ public sealed partial class EditorCanvas : Control
             ctx.DrawRectangle(fill, _groupSelection.Contains(sg) ? _theme.NodeStrokeSelected : stroke, r, imported is null ? 8 : 0, imported is null ? 8 : 0);
             if (_model.RenderedGeometry?.GroupLabel(_model, sg) is { } label) { DrawRenderedText(ctx, label, _theme.Label); continue; }
             var ft = new FormattedText(sg.Title ?? sg.Id, CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight, Face, 12, new SolidColorBrush(Color.Parse("#777")));
+                FlowDirection.LeftToRight, Face, 12, Brush(DiagramContrast.ReadableInk(BrushColor(_theme.Label),
+                    _model.RenderedGeometry is null ? DiagramContrast.Composite(BrushColor(fill), BrushColor(_theme.Background))
+                        : DiagramContrast.SurfaceAt(_model, new(r.X + 10, r.Y + 8), BrushColor(_theme.Background)))));
             ctx.DrawText(ft, new Point(r.X + 10, r.Y + 8));
         }
     }
@@ -513,8 +516,10 @@ public sealed partial class EditorCanvas : Control
 
         var textBrush = look.TextColor is not null
             ? new SolidColorBrush(ParseColor(look.TextColor, _theme.DefaultNodeText))
-            : ReadableOn(fill);
-        if (importedLabel is not null) { DrawRenderedText(ctx, importedLabel, textBrush); return; }
+            : Brush(DiagramContrast.ReadableInk(BrushColor(ReadableOn(fill)), DiagramContrast.Composite(BrushColor(fill),
+                _model is null ? BrushColor(_theme.Background)
+                    : DiagramContrast.SurfaceAt(_model, new(n.X + n.Width / 2, n.Y + n.Height / 2), BrushColor(_theme.Background)))));
+        if (importedLabel is not null) { DrawRenderedText(ctx, importedLabel, textBrush, fill, authoredInk: look.TextColor is not null); return; }
 
         // With an icon the glyph sits on the left and the label beside it.
         if (look.HasIcon)
@@ -538,6 +543,7 @@ public sealed partial class EditorCanvas : Control
     private static Color ParseColor(string? value, Color fallback)
     {
         if (string.IsNullOrWhiteSpace(value)) return fallback;
+        if (SequenceColors.TryParse(value, out var css)) return Color.FromArgb(css.Alpha, css.Red, css.Green, css.Blue);
         return Color.TryParse(value, out var c) ? c : fallback;
     }
 
@@ -659,6 +665,22 @@ public sealed partial class EditorCanvas : Control
             EdgeKind.Thick or EdgeKind.ThickArrow => _theme.EdgeThick,
             _ => _theme.Edge,
         };
+        if (_model.RenderedGeometry is not null)
+        {
+            var paint = DiagramContrast.ConnectorInk(_model, route, BrushColor(pen.Brush!), BrushColor(_theme.Background));
+            if (paint.Halo is { } halo)
+            {
+                var haloPen = new Pen(Brush(halo), pen.Thickness + 2);
+                // Dash lengths are stroke-width multiples; align the halo gaps with the original route.
+                if (pen.DashStyle is { Dashes: { } dashes } dash)
+                {
+                    var scale = pen.Thickness / haloPen.Thickness;
+                    haloPen.DashStyle = new DashStyle(dashes.Select(d => d * scale).ToArray(), dash.Offset * scale);
+                }
+                DrawGraphRoute(ctx, route, haloPen);
+            }
+            pen = new Pen(Brush(paint.Ink), pen.Thickness) { DashStyle = pen.DashStyle };
+        }
 
         // A selected link is drawn twice: a wide halo underneath, then the line
         // itself unchanged on top. Recolouring the line instead would hide which
@@ -674,7 +696,9 @@ public sealed partial class EditorCanvas : Control
         {
             var end = route[^1];
             var prior = route.Take(route.Count - 1).LastOrDefault(p => p != end);
-            DrawArrowHead(ctx, new(prior.X, prior.Y), new(end.X, end.Y), pen);
+            var arrowPen = _model.RenderedGeometry is null ? pen : new Pen(
+                Brush(DiagramContrast.ReadableInk(BrushColor(pen.Brush!), DiagramContrast.SurfaceAt(_model, end, BrushColor(_theme.Background)), 3)), pen.Thickness);
+            DrawArrowHead(ctx, new(prior.X, prior.Y), new(end.X, end.Y), arrowPen);
         }
 
         if (_model.RenderedGeometry?.EdgeLabel(_model, e) is { } importedText)

@@ -53,6 +53,21 @@ inventing flowchart nodes. `MerpeepsDoc.Parse`, `Inject`, `Serialise` and
 `BodyOf` remain type-agnostic, so callers can preserve or change metadata on
 other diagram families without loading a native model.
 
+## SVG appearance and outer background
+
+```csharp
+using Merpeeps.Core.Export;
+
+var svg = SvgExporter.ToSvg(model, theme: "dark", transparentBackground: true);
+```
+
+Defaults retain a filled outer canvas. Transparency removes only generated
+canvas paint; authored fills and label backplates stay. Imported graph labels
+resolve inherited ink against alpha-composited nested surfaces, while explicit
+node text/stroke colors remain unchanged. Gantt still requires the host's
+explicit `evaluationContext`. Output is static: choose ink matching the intended
+light/dark destination rather than expecting a host theme change to recolor it.
+
 ## Discover families and create an empty diagram
 
 `MermaidDiagramCatalog` describes the frozen **Mermaid 12.0.0 authoring target**:

@@ -73,7 +73,7 @@ export function harvestRenderedGeometry(svg, renderId = 'merpeeps-preview', samp
       fill: color(style.fill), stroke: color(style.stroke), strokeWidth: parseFloat(style.strokeWidth),
       label: labelGeometry(svg, group.querySelector('.cluster-label')) };
   }
-  for (const path of svg.querySelectorAll('.edgePaths path[data-edge="true"]')) {
+  for (const path of svg.querySelectorAll('path[data-edge="true"]')) {
     const rawId = path.getAttribute('data-id') ?? '';
     const matches = [];
     for (const from of Object.keys(nodes)) for (const to of Object.keys(nodes)) {
@@ -96,8 +96,36 @@ export function harvestRenderedGeometry(svg, renderId = 'merpeeps-preview', samp
   return { spec: 1, nodes, groups, edges, caption: title ? { label: labelGeometry(svg, title) } : null };
 }
 
-function renderText(label, ink, offset = { x: 0, y: 0 }) {
+function rgba(css) {
+  const probe = document.createElement('span');
+  probe.style.color = css === 'none' ? 'transparent' : css;
+  if (!probe.style.color) throw new Error(`Cannot resolve color ${css}.`);
+  document.body.append(probe);
+  const value = getComputedStyle(probe).color;
+  probe.remove();
+  const match = /rgba?\(([^)]+)\)/.exec(value);
+  if (!match) throw new Error(`Cannot resolve color ${css}.`);
+  const parts = match[1].split(',').map(Number);
+  return [parts[0], parts[1], parts[2], parts[3] ?? 1];
+}
+function composite(top, bottom) {
+  const a = rgba(top), b = rgba(bottom);
+  return `rgb(${a.slice(0, 3).map((v, i) => Math.round(v * a[3] + b[i] * (1 - a[3]))).join(',')})`;
+}
+function ratio(a, b) {
+  const luminance = css => rgba(css).slice(0, 3).map(v => {
+    const c = v / 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
+  }).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+  const x = luminance(a), y = luminance(b);
+  return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
+}
+function readable(ink, surface, threshold = 4.5) {
+  if (ratio(composite(ink, surface), surface) >= threshold) return ink;
+  return ratio('#000000', surface) >= ratio('#ffffff', surface) ? '#000000' : '#ffffff';
+}
+function renderText(label, ink, offset = { x: 0, y: 0 }, surface = '#ffffff', authored = false) {
   const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  if (!authored) ink = readable(ink, label?.background ? composite(label.background, surface) : surface);
   if (label?.background && label.lines.length) {
     const x = Math.min(...label.lines.map(l => l.x)) + offset.x - 3, y = Math.min(...label.lines.map(l => l.y)) + offset.y - 2;
     const right = Math.max(...label.lines.map(l => l.x + l.w)) + offset.x + 3, bottom = Math.max(...label.lines.map(l => l.y + l.h)) + offset.y + 2;
@@ -122,7 +150,7 @@ function renderText(label, ink, offset = { x: 0, y: 0 }) {
 }
 
 /** Replay a complete imported snapshot, retaining Mermaid's native node shapes. */
-export function replayRenderedGeometry(svgText, geometry, positions, renderId = 'merpeeps-preview') {
+export function replayRenderedGeometry(svgText, geometry, positions, renderId = 'merpeeps-preview', styles = {}) {
   if (geometry?.spec !== 1) throw new Error('Unsupported rendered geometry version.');
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;left:-100000px;top:0;visibility:hidden;width:2200px';
@@ -135,27 +163,36 @@ export function replayRenderedGeometry(svgText, geometry, positions, renderId = 
     }
     const root = document.createElementNS(svg.namespaceURI, 'g');
     root.setAttribute('class', 'rendered-geometry');
-    root.append(renderText(geometry.caption?.label, '#333333'));
+    const canvas = window.merpeepsCanvasColor ?? composite(getComputedStyle(document.body).backgroundColor, '#ffffff');
+    const inherited = readable('#333333', canvas);
     const deltas = Object.fromEntries(Object.entries(geometry.nodes).map(([id, n]) => {
       const p = positions[id] ?? n;
       if (Math.abs(p.w - n.w) > .02 || Math.abs(p.h - n.h) > .02) throw new Error(`Rendered snapshot is stale for the size of ${id}.`);
       return [id, { x: p.x - n.x, y: p.y - n.y }];
     }));
-    for (const [id, group] of Object.entries(geometry.groups)) {
+    const frames = Object.entries(geometry.groups).map(([id, group]) => {
+      const delta = deltas[group.members[0]] ?? { x: 0, y: 0 };
+      if (group.members.some(member => !deltas[member] || Math.abs(deltas[member].x - delta.x) > .02 || Math.abs(deltas[member].y - delta.y) > .02))
+        throw new Error(`Group ${id} changed internally. Re-adopt geometry to preserve reference composition.`);
+      return { id, group, delta, x: group.x + delta.x, y: group.y + delta.y };
+    }).sort((a, b) => b.group.w * b.group.h - a.group.w * a.group.h);
+    const surfaceAt = point => frames.filter(f =>
+      point[0] >= f.x && point[1] >= f.y && point[0] <= f.x + f.group.w && point[1] <= f.y + f.group.h)
+      .reduce((surface, f) => composite(f.group.fill ?? 'transparent', surface), canvas);
+    root.append(renderText(geometry.caption?.label, inherited, undefined, canvas));
+    for (const { id, group, delta } of frames) {
       const existing = [...svg.querySelectorAll('g.cluster')].find(g => groupId(g, renderId) === id);
       if (!existing || current.groups[id].text !== group.text ||
           current.groups[id].members.slice().sort().join('\0') !== group.members.slice().sort().join('\0'))
         throw new Error(`Rendered snapshot is stale for group ${id}.`);
-      const delta = deltas[group.members[0]] ?? { x: 0, y: 0 };
-      if (group.members.some(member => Math.abs(deltas[member].x - delta.x) > .02 || Math.abs(deltas[member].y - delta.y) > .02))
-        throw new Error(`Group ${id} changed internally. Re-adopt geometry to preserve reference composition.`);
       const clone = document.createElementNS(svg.namespaceURI, 'g'); clone.setAttribute('class', 'cluster'); clone.id = existing.id;
       const box = document.createElementNS(svg.namespaceURI, 'rect');
       for (const [key, value] of Object.entries({ x: group.x + delta.x, y: group.y + delta.y, width: group.w, height: group.h,
         fill: group.fill ?? 'none', stroke: group.stroke ?? '#999999', 'stroke-width': group.strokeWidth ?? 1 })) box.setAttribute(key, String(value));
       box.style.setProperty('fill', group.fill ?? 'none', 'important');
       box.style.setProperty('stroke', group.stroke ?? '#999999', 'important');
-      clone.append(box, renderText(group.label, '#333333', delta)); root.append(clone);
+      const labelPoint = group.label?.lines[0] ?? { x: group.x, y: group.y };
+      clone.append(box, renderText(group.label, inherited, delta, surfaceAt([labelPoint.x + delta.x, labelPoint.y + delta.y]))); root.append(clone);
     }
     for (const path of svg.querySelectorAll('.edgePaths path[data-edge="true"]')) {
       const rawId = path.getAttribute('data-id');
@@ -171,7 +208,37 @@ export function replayRenderedGeometry(svgText, geometry, positions, renderId = 
         throw new Error(`Connector ${key} changed endpoints. Re-adopt geometry.`);
       const clone = path.cloneNode(true); clone.removeAttribute('transform');
       clone.setAttribute('d', edge.points.map(([x, y], i) => `${i ? 'L' : 'M'}${x + delta.x},${y + delta.y}`).join(' '));
-      root.append(clone, renderText(edge.label, '#333333', delta));
+      const center = edge.points[Math.floor(edge.points.length / 2)].map((v, i) => v + [delta.x, delta.y][i]);
+      const ink = readable(getComputedStyle(path).stroke, surfaceAt(center), 3);
+      clone.style.stroke = ink;
+      if (edge.points.some(p => ratio(ink, surfaceAt([p[0] + delta.x, p[1] + delta.y])) < 3)) {
+        const halo = clone.cloneNode(true);
+        halo.removeAttribute('data-edge');
+        halo.removeAttribute('id');
+        halo.setAttribute('data-contrast-halo', 'true');
+        halo.removeAttribute('marker-end'); halo.removeAttribute('marker-start');
+        halo.style.stroke = readable(ink, ink, 3);
+        halo.style.strokeWidth = String(parseFloat(getComputedStyle(path).strokeWidth) + 2);
+        root.append(halo);
+      }
+      for (const attribute of ['marker-start', 'marker-end']) {
+        const markerUrl = clone.getAttribute(attribute);
+        const markerId = markerUrl && /#([^)]*)/.exec(markerUrl)?.[1];
+        const originalMarker = markerId && svg.querySelector(`[id="${markerId}"]`);
+        if (!originalMarker) continue;
+        const marker = originalMarker.cloneNode(true); marker.id += '-readable-' + root.children.length + '-' + attribute;
+        const endpoint = edge.points[attribute === 'marker-start' ? 0 : edge.points.length - 1];
+        const markerInk = readable(ink, surfaceAt([endpoint[0] + delta.x, endpoint[1] + delta.y]), 3);
+        svg.querySelector('defs').append(marker);
+        for (const shape of marker.querySelectorAll('path,polygon,circle')) {
+          if (getComputedStyle(shape).fill !== 'none') shape.style.fill = markerInk;
+          if (getComputedStyle(shape).stroke !== 'none') shape.style.stroke = markerInk;
+        }
+        clone.setAttribute(attribute, `url(#${marker.id})`);
+      }
+      const labelPoint = edge.label?.lines[0];
+      root.append(clone, renderText(edge.label, inherited, delta, surfaceAt(labelPoint
+        ? [labelPoint.x + delta.x, labelPoint.y + delta.y] : center)));
     }
     for (const original of svg.querySelectorAll('g.node')) {
       const id = nodeId(original, renderId), node = geometry.nodes[id];
@@ -182,8 +249,13 @@ export function replayRenderedGeometry(svgText, geometry, positions, renderId = 
       clone.setAttribute('transform', `translate(${x - box.x * node.w / box.width},${y - box.y * node.h / box.height}) scale(${node.w / box.width},${node.h / box.height})`);
       clone.querySelector('.label')?.remove();
       root.append(clone);
-      const ink = getComputedStyle(original.querySelector('.nodeLabel') ?? original).color;
-      root.append(renderText(node.label, ink, delta));
+      const labelElement = original.querySelector('.nodeLabel') ?? original;
+      const ink = getComputedStyle(labelElement).color;
+      const shape = original.querySelector('rect, circle, ellipse, polygon, path');
+      const beneath = surfaceAt([x + node.w / 2, y + node.h / 2]);
+      const surface = shape ? composite(getComputedStyle(shape).fill, beneath) : beneath;
+      const authored = Boolean(styles[id]?.text || labelElement.style.color || labelElement.style.fill);
+      root.append(renderText(node.label, ink, delta, surface, authored));
     }
     for (const child of [...svg.children]) if (!['defs', 'style'].includes(child.tagName.toLowerCase())) child.remove();
     svg.append(root);

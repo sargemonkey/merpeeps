@@ -33,4 +33,5 @@ export declare function replayRenderedGeometry(
   geometry: RenderedGraphGeometry,
   positions: Record<string, DiagramBounds>,
   renderId?: string,
+  styles?: Record<string, { text?: string }>,
 ): string;

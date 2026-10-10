@@ -43,12 +43,17 @@ uses the `merpie` launcher; macOS opens `Merpie.app`. These are unsigned,
 runtime-bundled packages, not automatic installation or public publication.
 See [deployment packaging](docs/GUIDE.md#merpie-desktop-packaging).
 
-The first release is **0.1.0-preview.1**, deliberately draft/prerelease until
+The current release candidate is **0.1.0-preview.2**, deliberately draft/prerelease until
 platform acceptance and signing are completed. NuGet and npm companion artifacts
 are attached, not automatically pushed to registries. The JavaScript companion
 supports metadata/layout replay; it is **not a port of all C# typed editors**.
 See [release process and limitations](docs/RELEASING.md) and
 [family support](docs/DIAGRAM-SUPPORT.md).
+
+Inherited diagram labels adapt to actual light/dark and translucent surfaces
+without rewriting authored colors. SVG export offers document/light/dark
+appearance independently of a transparent outer canvas; CLI SVG and offline
+preview accept `--transparent`. Static output does not recolor with its host.
 
 Family availability does **not** mean every upstream feature has native parity.
 Unsupported constructs are preserved or explicitly refused, and native

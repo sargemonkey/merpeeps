@@ -12,7 +12,7 @@
   <!-- NuGet metadata. -->
   <PropertyGroup>
     <PackageId>Merpeeps.Core</PackageId>
-    <Version>0.2.0-preview.1</Version>
+    <Version>0.2.0-preview.2</Version>
     <Authors>Merpeeps contributors</Authors>
     <Description>Typed parsing, reversible editing, native layout and SVG for 33 Mermaid diagram families, with compatible in-file layout and styling metadata. Shared engine for Merpie.</Description>
     <PackageTags>mermaid;diagram;layout;graph;flowchart;frontmatter;merpeeps</PackageTags>

@@ -118,6 +118,15 @@ The layout selection is injected **in memory only** and never written to your
 file. A document that depends on a plugin being installed is exactly the
 lock-in this format exists to avoid.
 
+An explicit `layout.rendered` Flowchart snapshot instead replays saved group
+frames, label placement and sampled routes. Inherited ink adapts to actual
+composited fills, including nested/translucent and uniformly translated groups.
+Authored node text/fills/strokes remain fixed; incompatible edits report a stale
+snapshot rather than pretending to preserve it. The optional fifth
+`replayRenderedGeometry` argument carries stored node text styles for that
+distinction. Hosts control the outer HTML/SVG canvas independently; transparent
+static images still need ink chosen for their intended light/dark destination.
+
 ### Why it needs the `renderWithLayout` wrapper
 
 A registered mermaid layout algorithm receives a `LayoutData`, not the source

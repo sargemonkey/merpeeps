@@ -49,7 +49,18 @@ public static partial class SvgExporter
     /// exporter's own neutral defaults.
     /// </param>
     /// <param name="evaluationContext">Required for Gantt: the host-captured reference instant and timezone.</param>
-    public static string ToSvg(DiagramModel model, string? theme = null, GanttEvaluationContext? evaluationContext = null)
+    /// <param name="transparentBackground">Remove only the painted outer canvas, preserving document fills.</param>
+    public static string ToSvg(DiagramModel model, string? theme = null, GanttEvaluationContext? evaluationContext = null,
+        bool transparentBackground = false)
+    {
+        var svg = ToSvgWithBackground(model, theme, evaluationContext);
+        return transparentBackground ? SvgBackground.MakeTransparent(svg) : svg;
+    }
+
+    public static string ToSvg(DiagramModel model, string? theme, GanttEvaluationContext? evaluationContext) =>
+        ToSvgWithBackground(model, theme, evaluationContext);
+
+    private static string ToSvgWithBackground(DiagramModel model, string? theme, GanttEvaluationContext? evaluationContext)
     {
         Parsing.DiagramAdapters.ForModel(model);
         if (model.Sequence is not null) return SequenceSvg(model, theme);
@@ -148,9 +159,11 @@ public static partial class SvgExporter
         sb.Append("    </marker>\n");
         sb.Append("  </defs>\n");
 
-        sb.Append($"  <rect width=\"100%\" height=\"100%\" fill=\"{palette.Background}\"/>\n");
+        sb.Append($"  <rect data-canvas-background=\"true\" width=\"100%\" height=\"100%\" fill=\"{palette.Background}\"/>\n");
         sb.Append($"  <g transform=\"translate({N(dx)},{N(dy)})\">\n");
-        if (model.RenderedGeometry?.Caption is { } captionLabel) WriteRenderedText(sb, captionLabel, palette.MutedText);
+        if (model.RenderedGeometry?.Caption is { } captionLabel) WriteRenderedText(sb, captionLabel,
+            DiagramContrast.ReadableInk(DiagramContrast.Parse(palette.MutedText),
+                DiagramContrast.LabelSurface(captionLabel, DiagramContrast.Parse(palette.Background))).Css);
 
         // Edges first, so a node covers the stub of a line that reaches it.
         if (model.ClassOptions is not null)
@@ -172,12 +185,19 @@ public static partial class SvgExporter
                 var bounds = GraphGroupGeometry.Bounds(model, group);
                 var imported = model.RenderedGeometry?.Groups.GetValueOrDefault(group.Id);
                 sb.Append($"<g data-subgraph=\"{Esc(group.Id)}\"><rect x=\"{N(bounds.X)}\" y=\"{N(bounds.Y)}\" width=\"{N(bounds.Width)}\" height=\"{N(bounds.Height)}\" fill=\"{Esc(imported?.Fill ?? "none")}\" stroke=\"{Esc(imported?.Stroke ?? palette.NodeStroke)}\" stroke-width=\"{N(imported?.StrokeWidth ?? 1)}\"/>\n");
-                if (model.RenderedGeometry?.GroupLabel(model, group) is { } label) WriteRenderedText(sb, label, palette.MutedText);
-                else WriteLabel(sb, group.Title ?? group.Id, bounds.X + 10, bounds.Y + 16, palette.MutedText, "start");
+                if (model.RenderedGeometry?.GroupLabel(model, group) is { } label) WriteRenderedText(sb, label,
+                    DiagramContrast.ReadableInk(DiagramContrast.Parse(palette.MutedText),
+                        DiagramContrast.LabelSurface(label, label.Lines.Count > 0
+                            ? DiagramContrast.SurfaceAt(model, new(label.Lines[0].Bounds.X, label.Lines[0].Bounds.Y), DiagramContrast.Parse(palette.Background))
+                            : DiagramContrast.Parse(palette.Background))).Css);
+                else WriteLabel(sb, group.Title ?? group.Id, bounds.X + 10, bounds.Y + 16,
+                    DiagramContrast.ReadableInk(DiagramContrast.Parse(palette.MutedText),
+                        DiagramContrast.SurfaceAt(model, new(bounds.X + 10, bounds.Y + 16), DiagramContrast.Parse(palette.Background))).Css, "start");
                 sb.Append("</g>\n");
             }
             foreach (var edge in model.Edges) WriteEdge(sb, model, edge, palette);
-            foreach (var node in model.Nodes) WriteNode(sb, node, palette, model.RenderedGeometry?.NodeLabel(model, node));
+            foreach (var node in model.Nodes) WriteNode(sb, node, palette, model.RenderedGeometry?.NodeLabel(model, node),
+                DiagramContrast.SurfaceAt(model, new(node.X + node.Width / 2, node.Y + node.Height / 2), DiagramContrast.Parse(palette.Background)));
         }
 
         sb.Append("  </g>\n");
@@ -187,7 +207,7 @@ public static partial class SvgExporter
 
     // ------------------------------------------------------------------ nodes
 
-    private static void WriteNode(StringBuilder sb, DiagramNode n, Palette p, RenderedText? renderedLabel = null)
+    private static void WriteNode(StringBuilder sb, DiagramNode n, Palette p, RenderedText? renderedLabel = null, ClassColor? beneath = null)
     {
         var fill = n.Fill ?? p.NodeFill;
         var stroke = n.Stroke ?? p.NodeStroke;
@@ -200,6 +220,12 @@ public static partial class SvgExporter
 
         var hasIcon = IconGeometry.For(n.Icon).Count > 0;
         var text = n.TextColor ?? Ink(fill);
+        if (n.TextColor is null)
+        {
+            var surface = DiagramContrast.Composite(DiagramContrast.Parse(fill), beneath ?? DiagramContrast.Parse(p.Background));
+            if (renderedLabel is not null) surface = DiagramContrast.LabelSurface(renderedLabel, surface);
+            text = DiagramContrast.ReadableInk(DiagramContrast.Parse(text), surface).Css;
+        }
 
         if (renderedLabel is not null) WriteRenderedText(sb, renderedLabel, text);
         else if (hasIcon)
@@ -357,11 +383,28 @@ public static partial class SvgExporter
         var head = e.Kind is EdgeKind.Open or EdgeKind.Dotted
             ? "" : " marker-end=\"url(#arrow)\"";
 
+        var edgeInk = p.Edge;
+        if (m.RenderedGeometry is not null)
+        {
+            var paint = DiagramContrast.ConnectorInk(m, route, DiagramContrast.Parse(p.Edge), DiagramContrast.Parse(p.Background));
+            edgeInk = paint.Ink.Css;
+            if (paint.Halo is { } halo)
+                sb.Append($"<polyline data-contrast-halo=\"true\" points=\"{string.Join(" ", route.Select(point => $"{N(point.X)},{N(point.Y)}"))}\" fill=\"none\" stroke=\"{halo.Css}\" stroke-width=\"{N(width + 2)}\"{dash}/>\n");
+            var id = "readable-arrow-" + m.Edges.IndexOf(e);
+            var arrowInk = DiagramContrast.ReadableInk(paint.Ink, DiagramContrast.SurfaceAt(m, route[^1], DiagramContrast.Parse(p.Background)), 3).Css;
+            sb.Append($"<defs><marker id=\"{id}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{arrowInk}\"/></marker></defs>\n");
+            if (head.Length > 0) head = $" marker-end=\"url(#{id})\"";
+        }
         if (route.Count == 2) sb.Append($"    <line x1=\"{N(ax)}\" y1=\"{N(ay)}\" x2=\"{N(bx)}\" y2=\"{N(by)}\" ");
         else sb.Append($"    <polyline points=\"{string.Join(" ", route.Select(point => $"{N(point.X)},{N(point.Y)}"))}\" fill=\"none\" ");
-        sb.Append($"stroke=\"{p.Edge}\" stroke-width=\"{N(width)}\"{dash}{head}/>\n");
+        sb.Append($"stroke=\"{edgeInk}\" stroke-width=\"{N(width)}\"{dash}{head}/>\n");
 
-        if (m.RenderedGeometry?.EdgeLabel(m, e) is { } label) { WriteRenderedText(sb, label, p.MutedText); return; }
+        if (m.RenderedGeometry?.EdgeLabel(m, e) is { } label)
+        {
+            var point = label.Lines.Count == 0 ? GraphEdgeGeometry.LabelPoint(route) : new DiagramPoint(label.Lines[0].Bounds.X, label.Lines[0].Bounds.Y);
+            var surface = DiagramContrast.LabelSurface(label, DiagramContrast.SurfaceAt(m, point, DiagramContrast.Parse(p.Background)));
+            WriteRenderedText(sb, label, DiagramContrast.ReadableInk(DiagramContrast.Parse(p.MutedText), surface).Css); return;
+        }
         if (!string.IsNullOrEmpty(e.Label))
         {
             const double LabelSize = 12;

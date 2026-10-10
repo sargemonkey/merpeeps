@@ -49,6 +49,8 @@ public static class DrawingSceneSvg
             element.Add(new XAttribute("data-owner", figure.Owner.Id), new XAttribute("data-role", figure.Owner.Role),
                 new XAttribute("fill", figure.Fill?.Css ?? "none"), new XAttribute("stroke", figure.Stroke?.Css ?? "none"),
                 new XAttribute("stroke-width", N(figure.StrokeWidth)));
+            if (figure.Id == "background" && figure.Kind == DrawingFigureKind.Rectangle)
+                element.Add(new XAttribute("data-canvas-background", "true"));
             if (figure.Owner.DetailId is { } detail) element.Add(new XAttribute("data-detail", detail));
             if (figure.DashPattern is { Count: > 0 } pattern) element.Add(new XAttribute("stroke-dasharray", string.Join(",", pattern.Select(N))));
             else if (figure.Dashed) element.Add(new XAttribute("stroke-dasharray", "4,4"));

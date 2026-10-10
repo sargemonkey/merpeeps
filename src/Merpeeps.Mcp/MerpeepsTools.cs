@@ -338,14 +338,16 @@ public static class MerpeepsTools
         [Description("Absolute path for the .svg to write. Defaults to the input path with a .svg extension.")]
         string? outPath = null,
         [Description("Optional mermaid theme name (default, dark, forest, neutral, base, neo, neo-dark, redux, redux-dark). Omit to use the theme in the file.")]
-        string? theme = null)
+        string? theme = null,
+        [Description("Remove only the outer canvas background. Authored node/group fills remain; choose light/dark ink to match the destination.")]
+        bool transparentBackground = false)
     {
         if (!File.Exists(path)) return Err($"file not found: {path}");
 
         var source = File.ReadAllText(path);
         if (NativeError(source) is { } error) return error;
         var model = MerpeepsDocument.Load(source);
-        var svg = SvgExporter.ToSvg(model, theme, model.Gantt is null ? null : new Core.Model.GanttEvaluationContext(DateTimeOffset.Now, TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture));
+        var svg = SvgExporter.ToSvg(model, theme, model.Gantt is null ? null : new Core.Model.GanttEvaluationContext(DateTimeOffset.Now, TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture), transparentBackground);
 
         var target = outPath ?? Path.ChangeExtension(path, ".svg");
         File.WriteAllText(target, svg);

@@ -24,10 +24,16 @@ foreach (var dialect in family.Dialects)
     var svg = XDocument.Parse(SvgExporter.ToSvg(reopened, evaluationContext: context));
     if (svg.Root?.Name.LocalName != "svg" || !svg.Descendants().Any(e => e.Name.LocalName == "text" && !string.IsNullOrWhiteSpace(e.Value)))
         throw new Exception($"Vacuous populated output: {dialect.Id}");
+    var transparent = XDocument.Parse(SvgExporter.ToSvg(reopened, evaluationContext: context, transparentBackground: true));
+    if ((string?)transparent.Root?.Attribute("data-canvas-background") != "transparent" ||
+        transparent.Root.Elements().Any(e => (string?)e.Attribute("data-canvas-background") == "true") ||
+        !svg.Descendants().Where(e => e.Name.LocalName == "text").Select(e => e.Value)
+            .SequenceEqual(transparent.Descendants().Where(e => e.Name.LocalName == "text").Select(e => e.Value)))
+        throw new Exception($"Transparent output changed diagram content: {dialect.Id}");
     var second = MerpeepsDocument.Save(saved, reopened);
     if (MerpeepsDoc.BodyOf(second) != MerpeepsDoc.BodyOf(saved)) throw new Exception($"Source body drift: {dialect.Id}");
     reports.Add(new { family = family.Id, dialect = dialect.Id, draft = true, populated = true,
-        nativeSvg = true, canGraphLayout = draft.Capabilities.CanLayout });
+        nativeSvg = true, transparentSvg = true, canGraphLayout = draft.Capabilities.CanLayout });
 }
 RenderAssets.Verify();
 if (RenderAssets.MermaidVersion != "12.0.0" || !MermaidValidationPage.BuildShell().Contains("script"))

@@ -1,0 +1,90 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:Merpeeps.App">
+  <Style Selector="Window">
+    <Setter Property="FontFamily" Value="{StaticResource AmplifyUiFont}"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Foreground" Value="{DynamicResource AmplifyTextBrush}"/>
+    <Setter Property="Background" Value="{DynamicResource AmplifySurfaceBrush}"/>
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource AmplifyMutedBrush}"/>
+  </Style>
+  <Style Selector="TextBlock.display">
+    <Setter Property="FontFamily" Value="{StaticResource AmplifyDisplayFont}"/>
+    <Setter Property="FontWeight" Value="Bold"/>
+  </Style>
+  <Style Selector="Button, ToggleButton">
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="MinHeight" Value="32"/>
+    <Setter Property="Padding" Value="10,6"/>
+    <Setter Property="Background" Value="{DynamicResource AmplifySurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AmplifyBorderBrush}"/>
+  </Style>
+  <Style Selector="Button.ghost, ToggleButton.ghost">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.icon-action, ToggleButton.icon-action">
+    <Setter Property="Width" Value="32"/>
+    <Setter Property="Height" Value="32"/>
+    <Setter Property="Padding" Value="6"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AmplifyAccentSoftBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AmplifyAccentBrush}"/>
+  </Style>
+  <Style Selector="ToggleButton.ghost:checked /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AmplifyAccentSoftBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AmplifyAccentBrush}"/>
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="#5B2BFF"/>
+    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="BorderBrush" Value="#5B2BFF"/>
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#4A1FE0"/>
+    <Setter Property="Foreground" Value="White"/>
+  </Style>
+  <Style Selector="TextBox, ComboBox, NumericUpDown">
+    <Setter Property="MinHeight" Value="34"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Background" Value="{DynamicResource AmplifyInputBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AmplifyBorderBrush}"/>
+  </Style>
+  <Style Selector="TextBox.selection-name">
+    <Setter Property="FontSize" Value="15"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="TextBox.selection-name:focus">
+    <Setter Property="BorderBrush" Value="{DynamicResource AmplifyAccentBrush}"/>
+    <Setter Property="Background" Value="{DynamicResource AmplifyInputBrush}"/>
+  </Style>
+  <Style Selector="Expander">
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton#ExpanderHeader">
+    <Setter Property="MinHeight" Value="36"/>
+    <Setter Property="Padding" Value="8,6"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="ListBox.palette-list > ListBoxItem">
+    <Setter Property="Padding" Value="8"/>
+    <Setter Property="Margin" Value="4,4,4,0"/>
+    <Setter Property="MinHeight" Value="48"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="CornerRadius" Value="6"/>
+  </Style>
+  <Style Selector="ToolTip">
+    <Setter Property="FontFamily" Value="{StaticResource AmplifyUiFont}"/>
+    <Setter Property="FontSize" Value="12"/>
+  </Style>
+</Styles>

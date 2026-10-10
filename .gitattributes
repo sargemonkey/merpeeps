@@ -1,0 +1,8 @@
+# Keep the upstream runtime byte-for-byte, including its own generated whitespace.
+src/Merpeeps.Render/Assets/vendor/mermaid/mermaid.min.js -text -whitespace linguist-vendored
+src/Merpeeps.Render/Assets/vendor/zenuml/zenuml.js -text -whitespace linguist-vendored
+# Preserve upstream license bytes and generated notices, including their whitespace.
+src/Merpeeps.App/Assets/Fonts/*-OFL.txt -text -whitespace
+src/Merpeeps.Render/Assets/vendor/zenuml/LICENSE -text -whitespace
+src/Merpeeps.Render/Assets/vendor/zenuml/THIRD-PARTY-NOTICES.txt -text -whitespace
+src/Merpeeps.Render/Assets/vendor/zenuml/upstream-notices/*.txt -text -whitespace

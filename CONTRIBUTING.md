@@ -2,6 +2,12 @@
 
 ## Building
 
+The GUI product is Merpie and builds as `Merpie.App`; its source project and
+namespace remain `Merpeeps.App`. CLI/MCP names, shared packages and file metadata
+stay compatible. Do not bulk-replace `Merpeeps` technical IDs when changing
+product copy. Locked mascot/icon files live in `src/Merpeeps.App/Assets/Brand`;
+the packaging scripts and desktop CI consume that same source, not a second icon.
+
 You need the **.NET 10 SDK**. Node 22 is needed only for the browser-based gates.
 
 ```bash
@@ -9,8 +15,8 @@ dotnet build -c Release
 dotnet test -c Release
 ```
 
-That is 1,140 tests and should take about a minute. The suite is expected to run
-with **zero warnings**; a new warning is treated as a failure.
+The solution includes diagram, UI and shared-scene tests. The suite is expected
+to build with **zero warnings**; a new warning is treated as a failure.
 
 For the gates that render in a real browser:
 
@@ -64,6 +70,7 @@ which are separate top-level windows.
 | Layer | What it covers | Command |
 |---|---|---|
 | `Merpeeps.Core.Tests` | Format invariants, parsing, layout, edit commands, the surgical writer | `dotnet test tests/Merpeeps.Core.Tests` |
+| `Merpeeps.Scene.Tests` | Scene identity, geometry, styling, forward preservation and reversible commands | `dotnet test tests/Merpeeps.Scene.Tests` |
 | `Merpeeps.App.Tests` | The real window, real XAML, real handlers, headless — asserting on captured pixels | `dotnet test tests/Merpeeps.App.Tests` |
 | `oracle/run-oracle.mjs` | 30 diagram types × 9 invariants against real mermaid in Chrome | `node oracle/run-oracle.mjs` |
 | 13 further gates | Harvest replay, the npm plugin, MCP over real stdio, CLI/MCP parity, bake, previews, themes | see `oracle/` |
@@ -72,6 +79,27 @@ The UI suite renders with real Skia and asserts on pixels rather than on what th
 drawing code intended. Two bugs — icons still drawn with styling switched off,
 and unreadable labels in dark mode — shipped past a green suite and were caught
 only by a person looking at a screenshot. That is why it works this way.
+
+### Family coverage versus acceptance
+
+The catalog's 33 families and every listed dialect have non-vacuous empty
+creation/save/reopen controls. Each new family also needs an actual authoring
+route, typed data, reversible edits, source preservation and native geometry.
+Never satisfy a family test by substituting a flowchart or merely enabling its
+gallery card.
+
+The latest standalone checkpoint passed 1,216 Core and 459 App tests. Bounded
+Skia inspection and parser-oracle checks are distinct from native Windows
+interaction, Narrator and real PowerPoint fidelity. Private native consumer
+checks cover only the gestures recorded in their reports. Physical user input
+made several test copies user-owned; those copies, fixtures and settings must
+not be driven, closed or overwritten to complete a test.
+
+New regression controls include exact Venn overlap membership and area
+constraints, grammar-tree identities after wrapping, compact Use Case typed
+metadata, source data-kind retention, and relationship-label clearance. Unknown
+or unsupported semantics must stay diagnosable rather than becoming successful
+empty or approximate exports without disclosure.
 
 ---
 
@@ -93,6 +121,18 @@ Two need the built MCP server:
 node mcp-smoke.mjs      ../src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
 node mcp-agent-test.mjs ../src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
 ```
+
+The capability contract checks real CLI/MCP errors, destination preservation
+and the distinction between metadata validation and native support:
+
+```bash
+node capability-test.mjs \
+  ../src/Merpeeps.Cli/bin/Release/net10.0/merpeeps \
+  ../src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
+```
+
+On Windows, append `.exe` to the CLI path. Omit the MCP argument to exercise
+only the CLI (including a published NativeAOT binary).
 
 One needs both front ends, because comparing them is the point:
 

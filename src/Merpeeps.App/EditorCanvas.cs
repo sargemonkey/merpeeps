@@ -41,16 +41,15 @@ public enum CanvasTool
 /// <para>All structural changes go through <see cref="EditHistory"/> so undo
 /// and redo behave uniformly; the canvas never mutates the model directly.</para>
 /// </summary>
-public sealed class EditorCanvas : Control
+public sealed partial class EditorCanvas : Control
 {
     private DiagramModel? _model;
     private EditHistory? _history;
 
     private readonly HashSet<DiagramNode> _selection = new();
-    private readonly List<(DiagramNode Node, double X, double Y)> _dragStart = new();
 
     private DiagramNode? _dragging;
-    private Point _dragOffset;
+    private Vector _dragOffset;
     private Point? _panFrom;
     private double _panStartX, _panStartY;
 
@@ -60,11 +59,16 @@ public sealed class EditorCanvas : Control
 
     private Point? _marqueeStart;
     private Rect _marquee;
+    private DiagramNode[] _marqueeNodes = [];
+    private DiagramSubgraph[] _marqueeGroups = [];
 
     private DiagramNode? _editing;
     private DiagramEdge? _editingEdge;
     private string _editBuffer = "";
     private bool _editReplaceOnFirstKey;
+    private bool _ignoreGalleryDoubleClick;
+
+    internal void IgnoreGalleryDoubleClick() => _ignoreGalleryDoubleClick = true;
 
     public double Zoom { get; private set; } = 1.0;
     public double OffsetX { get; private set; }
@@ -73,7 +77,7 @@ public sealed class EditorCanvas : Control
     public DiagramModel? Model => _model;
     public EditHistory? History => _history;
     public IReadOnlyCollection<DiagramNode> Selection => _selection;
-    public DiagramNode? Selected => _selection.Count == 1 ? _selection.First() : null;
+    public DiagramNode? Selected => _selection.Count == 1 && _groupSelection.Count == 0 ? _selection.First() : null;
 
     /// <summary>The selected link, or null.</summary>
     /// <remarks>
@@ -165,6 +169,7 @@ public sealed class EditorCanvas : Control
         set
         {
             if (_tool == value) return;
+            EndGraphDrag(cancel: true);
             _tool = value;
 
             // Leaving the hand tool mid-drag would otherwise strand the pan,
@@ -218,16 +223,60 @@ public sealed class EditorCanvas : Control
         LostFocus += (_, _) => ReleasePanModifier();
     }
 
-    public void SetModel(DiagramModel model)
+    public void SetModel(DiagramModel model, GanttEvaluationContext? evaluationContext = null)
     {
+        EndGraphDrag(cancel: true);
+        ClearStructuralState();
+        _ganttContext = model.Gantt is null ? null : evaluationContext ?? CaptureGanttContext();
+        ClearDataState();
+        ClearChartState();
+        _sequenceCacheModel = null; _sequenceMessageSource = null; _selectedSequence = null;
+        ResetClassConnection();
+        _entityConnectionSource = null; _entityReconnect = null; _selectedGroup = null;
+        Core.Parsing.DiagramAdapters.ForModel(model);
         _model = model;
         _history = new EditHistory(model);
         _selection.Clear();
         _selectedEdge = null;
+        _marqueeStart = null; _marqueeNodes = []; _marqueeGroups = [];
         _editing = null;
         _editingEdge = null;
         MeasureLabels();
-        FitToView();
+        if (model.Nodes.Count == 0)
+        {
+            Zoom = 1;
+            OffsetX = 40;
+            OffsetY = 40;
+        }
+        if (model.Gantt is not null || IsStrategyDiagram || IsSetGrammarDiagram || IsOwnershipDiagram || IsWorkflowDiagram) { Zoom = 1; OffsetX = 20; OffsetY = 20; }
+        else FitToView();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+        InvalidateVisual();
+    }
+
+    public void ClearModel()
+    {
+        EndGraphDrag(cancel: true);
+        ClearStructuralState();
+        ClearDataState();
+        ClearChartState();
+        _sequenceCacheModel = null; _sequenceMessageSource = null; _selectedSequence = null;
+        ResetClassConnection();
+        _entityConnectionSource = null; _entityReconnect = null; _selectedGroup = null;
+        _model = null;
+        _history = null;
+        _selection.Clear();
+        _selectedEdge = null;
+        _dragging = null;
+        _connectFrom = null;
+        _connectTarget = null;
+        _panFrom = null;
+        _marqueeStart = null;
+        _marqueeNodes = []; _marqueeGroups = [];
+        _editing = null;
+        _editingEdge = null;
+        _spaceHeld = false;
+        UpdateCursor();
         SelectionChanged?.Invoke(this, EventArgs.Empty);
         InvalidateVisual();
     }
@@ -248,6 +297,7 @@ public sealed class EditorCanvas : Control
     /// </summary>
     private static void MeasureNode(DiagramNode n)
     {
+        if (n.Class is not null || n.Entity is not null || n.HasExplicitSize) return;
         // Any brush works here — only the measured extent is used, and that
         // does not depend on colour. Kept static so measuring never needs the
         // theme, which would tie sizing to appearance for no reason.
@@ -273,7 +323,46 @@ public sealed class EditorCanvas : Control
 
     public void FitToView()
     {
-        if (_model is null || _model.Nodes.Count == 0) return;
+        EndGraphDrag(cancel: true);
+        if (IsWorkflowDiagram || IsStrategyDiagram || IsSetGrammarDiagram || IsOwnershipDiagram || _model?.Requirements is not null || _model?.GitDiagram is not null || _model?.Sankey is not null || _model?.Treemap is not null || _model?.Blocks is not null || _model?.Architecture is not null || _model?.C4 is not null || _model?.Gantt is not null)
+        {
+            _structuralCacheModel = null;
+            var scene = StructuralScene;
+            if (Bounds.Width < 2 || Bounds.Height < 2) return;
+            Zoom = Math.Clamp(Math.Min((Bounds.Width - 40) / scene.Width, (Bounds.Height - 40) / scene.Height), .08, 1.5);
+            OffsetX = (Bounds.Width - scene.Width * Zoom) / 2; OffsetY = (Bounds.Height - scene.Height * Zoom) / 2;
+            InvalidateVisual(); return;
+        }
+        if (_model?.Outline is not null || _model?.Temporal is not null || _model?.Packet is not null || _model?.Kanban is not null)
+        {
+            _dataCacheModel = null;
+            var scene = DataScene.Scene;
+            if (Bounds.Width < 2 || Bounds.Height < 2) return;
+            Zoom = Math.Clamp(Math.Min((Bounds.Width - 40) / scene.Width, (Bounds.Height - 40) / scene.Height), .08, 1.5);
+            OffsetX = (Bounds.Width - scene.Width * Zoom) / 2; OffsetY = (Bounds.Height - scene.Height * Zoom) / 2;
+            InvalidateVisual(); return;
+        }
+        if (_model?.Chart is not null)
+        {
+            _chartCacheModel = null;
+            var scene = ChartScene.Scene;
+            if (Bounds.Width < 2 || Bounds.Height < 2) return;
+            Zoom = Math.Clamp(Math.Min((Bounds.Width - 40) / scene.Width, (Bounds.Height - 40) / scene.Height), .08, 1.5);
+            OffsetX = (Bounds.Width - scene.Width * Zoom) / 2; OffsetY = (Bounds.Height - scene.Height * Zoom) / 2;
+            InvalidateVisual(); return;
+        }
+        if (_model?.Sequence is not null)
+        {
+            var scene = SequenceScene;
+            var available = Bounds.Size;
+            if (available.Width < 2 || available.Height < 2) return;
+            Zoom = Math.Clamp(Math.Min((available.Width - 40) / scene.Width, (available.Height - 40) / scene.Height), .08, 1.5);
+            OffsetX = (available.Width - scene.Width * Zoom) / 2;
+            OffsetY = (available.Height - scene.Height * Zoom) / 2;
+            InvalidateVisual();
+            return;
+        }
+        if (_model is null || _model.Nodes.Count == 0 && (_model.EntityOptions is null || _model.Subgraphs.Count == 0)) return;
         var b = WorldBounds().Inflate(40);
         if (Bounds.Width < 2 || Bounds.Height < 2) { Zoom = 1; return; }
         Zoom = Math.Clamp(Math.Min(Bounds.Width / b.Width, Bounds.Height / b.Height), 0.1, 2.5);
@@ -284,7 +373,7 @@ public sealed class EditorCanvas : Control
 
     private Rect WorldBounds()
     {
-        if (_model is null || _model.Nodes.Count == 0) return new Rect(0, 0, 1, 1);
+        if (_model is null || _model.Nodes.Count == 0 && !_model.Subgraphs.Any(g => GraphGroupGeometry.IsVisible(_model, g))) return new Rect(0, 0, 1, 1);
         double x0 = double.MaxValue, y0 = double.MaxValue,
                x1 = double.MinValue, y1 = double.MinValue;
         foreach (var n in _model.Nodes)
@@ -292,6 +381,32 @@ public sealed class EditorCanvas : Control
             x0 = Math.Min(x0, n.X); y0 = Math.Min(y0, n.Y);
             x1 = Math.Max(x1, n.X + n.Width); y1 = Math.Max(y1, n.Y + n.Height);
         }
+        foreach (var group in _model.Subgraphs.Where(g => GraphGroupGeometry.IsVisible(_model, g)))
+        {
+            var r = GraphGroupGeometry.Bounds(_model, group);
+            x0 = Math.Min(x0, r.X); y0 = Math.Min(y0, r.Y);
+            x1 = Math.Max(x1, r.X + r.Width); y1 = Math.Max(y1, r.Y + r.Height);
+        }
+        if (_model.EntityOptions is not null)
+        {
+            foreach (var point in _model.Edges.SelectMany(e => EntityDiagramGeometry.Route(_model, e)))
+            {
+                x0 = Math.Min(x0, point.X); y0 = Math.Min(y0, point.Y);
+                x1 = Math.Max(x1, point.X); y1 = Math.Max(y1, point.Y);
+            }
+        if (_model.RenderedGeometry?.Caption is { } caption)
+            foreach (var line in caption.Lines)
+            {
+                x0 = Math.Min(x0, line.Bounds.X); y0 = Math.Min(y0, line.Bounds.Y);
+                x1 = Math.Max(x1, line.Bounds.X + line.Bounds.Width); y1 = Math.Max(y1, line.Bounds.Y + line.Bounds.Height);
+            }
+        }
+        else if (_model.ClassOptions is null)
+            foreach (var point in _model.Edges.SelectMany(e => GraphEdgeGeometry.Route(_model, e)))
+            {
+                x0 = Math.Min(x0, point.X); y0 = Math.Min(y0, point.Y);
+                x1 = Math.Max(x1, point.X); y1 = Math.Max(y1, point.Y);
+            }
         return new Rect(x0, y0, Math.Max(1, x1 - x0), Math.Max(1, y1 - y0));
     }
 
@@ -310,11 +425,16 @@ public sealed class EditorCanvas : Control
         using (ctx.PushTransform(
             Matrix.CreateScale(Zoom, Zoom) * Matrix.CreateTranslation(OffsetX, OffsetY)))
         {
+            if (_model.Sequence is not null) { DrawSequence(ctx); return; }
+            if (_model.Chart is not null) { DrawChart(ctx); return; }
+            if (_model.Outline is not null || _model.Temporal is not null || _model.Packet is not null || _model.Kanban is not null) { DrawDataDiagram(ctx); return; }
+            if (IsWorkflowDiagram || IsStrategyDiagram || IsSetGrammarDiagram || IsOwnershipDiagram || _model.Requirements is not null || _model.GitDiagram is not null || _model.Sankey is not null || _model.Treemap is not null || _model.Blocks is not null || _model.Architecture is not null || _model.C4 is not null || _model.Gantt is not null) { DrawStructural(ctx); return; }
             DrawSubgraphs(ctx);
             foreach (var e in _model.Edges) DrawEdge(ctx, e);
             foreach (var n in _model.Nodes) DrawNode(ctx, n);
 
             if (_connectFrom is not null) DrawGhostLink(ctx);
+            if (_classRelationshipSource is not null) DrawClassConnection(ctx);
             if (Selected is { } sel && _dragging is null && !IsEditing)
                 DrawHandles(ctx, sel);
             if (_editing is not null) DrawLabelEditor(ctx, _editing);
@@ -331,23 +451,28 @@ public sealed class EditorCanvas : Control
     private void DrawSubgraphs(DrawingContext ctx)
     {
         if (_model is null) return;
+        if (_model.RenderedGeometry?.Caption is { } caption) DrawRenderedText(ctx, caption, _theme.Label);
+        if (_model.EntityOptions is not null) { DrawEntityGroups(ctx); return; }
+        if (_model.ClassOptions is not null) { DrawClassNamespaces(ctx); return; }
         foreach (var sg in _model.Subgraphs)
         {
-            var members = sg.NodeIds.Select(_model.Node).Where(n => n is not null).ToList();
-            if (members.Count == 0) continue;
-            double x0 = members.Min(n => n!.X) - 18, y0 = members.Min(n => n!.Y) - 34;
-            double x1 = members.Max(n => n!.X + n!.Width) + 18,
-                   y1 = members.Max(n => n!.Y + n!.Height) + 18;
-            var r = new Rect(x0, y0, x1 - x0, y1 - y0);
-            ctx.DrawRectangle(_theme.SubgraphFill, _theme.SubgraphStroke, r, 8, 8);
+            var bounds = GraphGroupGeometry.Bounds(_model, sg);
+            var r = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            var imported = _model.RenderedGeometry?.Groups.GetValueOrDefault(sg.Id);
+            var fill = imported?.Fill is { } f ? new SolidColorBrush(ParseColor(f, Colors.Transparent)) : _theme.SubgraphFill;
+            var stroke = imported?.Stroke is { } s ? new Pen(new SolidColorBrush(ParseColor(s, _theme.DefaultNodeStroke)), imported.StrokeWidth) : _theme.SubgraphStroke;
+            ctx.DrawRectangle(fill, _groupSelection.Contains(sg) ? _theme.NodeStrokeSelected : stroke, r, imported is null ? 8 : 0, imported is null ? 8 : 0);
+            if (_model.RenderedGeometry?.GroupLabel(_model, sg) is { } label) { DrawRenderedText(ctx, label, _theme.Label); continue; }
             var ft = new FormattedText(sg.Title ?? sg.Id, CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight, Face, 12, new SolidColorBrush(Color.Parse("#777")));
-            ctx.DrawText(ft, new Point(x0 + 10, y0 + 8));
+            ctx.DrawText(ft, new Point(r.X + 10, r.Y + 8));
         }
     }
 
     private void DrawNode(DrawingContext ctx, DiagramNode n)
     {
+        if (n.Entity is not null) { DrawEntityNode(ctx, n); return; }
+        if (n.Class is not null) { DrawClassNode(ctx, n); return; }
         var sel = _selection.Contains(n);
         var isTarget = ReferenceEquals(n, _connectTarget);
 
@@ -383,11 +508,13 @@ public sealed class EditorCanvas : Control
         // picks is drawn by the same code that will draw it on the canvas.
         ShapeRenderer.Draw(ctx, n.Shape, r, fill, pen);
 
-        if (Zoom <= 0.3 || ReferenceEquals(n, _editing)) return;
+        var importedLabel = _model?.RenderedGeometry?.NodeLabel(_model, n);
+        if (Zoom <= 0.3 && importedLabel is null || ReferenceEquals(n, _editing)) return;
 
         var textBrush = look.TextColor is not null
             ? new SolidColorBrush(ParseColor(look.TextColor, _theme.DefaultNodeText))
             : ReadableOn(fill);
+        if (importedLabel is not null) { DrawRenderedText(ctx, importedLabel, textBrush); return; }
 
         // With an icon the glyph sits on the left and the label beside it.
         if (look.HasIcon)
@@ -422,6 +549,7 @@ public sealed class EditorCanvas : Control
 
     private static IEnumerable<Point> HandlePoints(DiagramNode n)
     {
+        if (n.Class is { Kind: not ClassNodeKind.Class }) yield break;
         yield return new Point(n.X + n.Width / 2, n.Y);
         yield return new Point(n.X + n.Width / 2, n.Y + n.Height);
         yield return new Point(n.X, n.Y + n.Height / 2);
@@ -453,11 +581,26 @@ public sealed class EditorCanvas : Control
         var a = _model.Node(e.From);
         var b = _model.Node(e.To);
         if (a is null || b is null) return null;
+        if (e.ClassRelationship is not null)
+        {
+            var from = ClassDiagramGeometry.Anchor(a, ClassDiagramGeometry.Center(b));
+            var to = ClassDiagramGeometry.Anchor(b, ClassDiagramGeometry.Center(a));
+            return new Point((from.X + to.X) / 2, (from.Y + to.Y) / 2);
+        }
 
         var ca = new Point(a.X + a.Width / 2, a.Y + a.Height / 2);
         var cb = new Point(b.X + b.Width / 2, b.Y + b.Height / 2);
         var p1 = EdgePoint(a, cb);
         var p2 = EdgePoint(b, ca);
+        if (_model.ClassOptions is null && _model.EntityOptions is null)
+        {
+            var route = GraphEdgeGeometry.Route(_model, e);
+            if (_model.RenderedGeometry?.EdgeLabel(_model, e) is { Lines.Count: > 0 } label)
+            {
+                var r = label.Lines[0].Bounds; return new(r.X + r.Width / 2, r.Y + r.Height / 2);
+            }
+            var center = GraphEdgeGeometry.LabelPoint(route); return new(center.X, center.Y);
+        }
         return new Point((p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2);
     }
 
@@ -498,6 +641,8 @@ public sealed class EditorCanvas : Control
     private void DrawEdge(DrawingContext ctx, DiagramEdge e)
     {
         if (_model is null) return;
+        if (e.EntityRelationship is not null) { DrawEntityEdge(ctx, e); return; }
+        if (e.ClassRelationship is not null) { DrawClassEdge(ctx, e); return; }
         var a = _model.Node(e.From);
         var b = _model.Node(e.To);
         if (a is null || b is null || e.Kind == EdgeKind.Invisible) return;
@@ -506,6 +651,7 @@ public sealed class EditorCanvas : Control
         var cb = new Point(b.X + b.Width / 2, b.Y + b.Height / 2);
         var p1 = EdgePoint(a, cb);
         var p2 = EdgePoint(b, ca);
+        var route = GraphEdgeGeometry.Route(_model, e);
 
         var pen = e.Kind switch
         {
@@ -520,16 +666,27 @@ public sealed class EditorCanvas : Control
         // that, and the halo reads clearly over both light and dark canvases.
         if (ReferenceEquals(e, _selectedEdge))
         {
-            ctx.DrawLine(_theme.EdgeSelectedHalo, p1, p2);
+            DrawGraphRoute(ctx, route, _theme.EdgeSelectedHalo);
         }
 
-        ctx.DrawLine(pen, p1, p2);
-        if (e.Kind is EdgeKind.Arrow or EdgeKind.DottedArrow or EdgeKind.ThickArrow)
-            DrawArrowHead(ctx, p1, p2, pen);
+        DrawGraphRoute(ctx, route, pen);
+        if (e.Kind is EdgeKind.Arrow or EdgeKind.DottedArrow or EdgeKind.ThickArrow && route.Count > 1)
+        {
+            var end = route[^1];
+            var prior = route.Take(route.Count - 1).LastOrDefault(p => p != end);
+            DrawArrowHead(ctx, new(prior.X, prior.Y), new(end.X, end.Y), pen);
+        }
+
+        if (_model.RenderedGeometry?.EdgeLabel(_model, e) is { } importedText)
+        {
+            DrawRenderedText(ctx, importedText, _theme.Label);
+            return;
+        }
 
         if (!string.IsNullOrEmpty(e.Label) && Zoom > 0.4)
         {
-            var mid = new Point((p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2);
+            var midpoint = GraphEdgeGeometry.LabelPoint(route);
+            var mid = new Point(midpoint.X, midpoint.Y);
             var ft = new FormattedText(e.Label!, CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight, Face, 11, _theme.Label);
             var box = new Rect(mid.X - ft.Width / 2 - 3, mid.Y - ft.Height / 2 - 1,
@@ -576,6 +733,15 @@ public sealed class EditorCanvas : Control
 
         var pt = e.GetCurrentPoint(this);
         var world = ToWorld(pt.Position);
+        if (_ignoreGalleryDoubleClick)
+        {
+            _ignoreGalleryDoubleClick = false;
+            if (e.ClickCount > 1)
+            {
+                e.Handled = true;
+                return;
+            }
+        }
 
         // The hand tool — and space, its held equivalent — make the canvas
         // purely navigational: every press pans, and nothing selects, creates
@@ -587,8 +753,89 @@ public sealed class EditorCanvas : Control
             e.Handled = true;
             return;
         }
+        if (IsWorkflowDiagram || IsStrategyDiagram || IsSetGrammarDiagram || IsOwnershipDiagram || _model.Requirements is not null || _model.GitDiagram is not null || _model.Sankey is not null || _model.Treemap is not null || _model.Blocks is not null || _model.Architecture is not null || _model.C4 is not null || _model.Gantt is not null)
+        {
+            if (pt.Properties.IsLeftButtonPressed && !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                var connecting = _gridConnectionSource is not null;
+                StructuralPointer(world);
+                if (!connecting && e.ClickCount == 1 && BeginWardleyDrag(world)) e.Pointer.Capture(this);
+                if (e.ClickCount == 2) StructuralEditRequested?.Invoke(this, EventArgs.Empty);
+            }
+            else StartPan(pt.Position, e);
+            e.Handled = true; return;
+        }
+        if (_model.Outline is not null || _model.Temporal is not null || _model.Packet is not null || _model.Kanban is not null)
+        {
+            if (pt.Properties.IsLeftButtonPressed && !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                if (DataPointer(world)) e.Pointer.Capture(this);
+                if (e.ClickCount == 2) DataEditRequested?.Invoke(this, EventArgs.Empty);
+            }
+            else StartPan(pt.Position, e);
+            e.Handled = true; return;
+        }
+        if (_model.Chart is not null)
+        {
+            if (pt.Properties.IsLeftButtonPressed && !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                if (ChartPointer(world)) e.Pointer.Capture(this);
+                if (e.ClickCount == 2) ChartEditRequested?.Invoke(this, EventArgs.Empty);
+            }
+            else StartPan(pt.Position, e);
+            e.Handled = true; return;
+        }
+        if (_model.Sequence is not null && pt.Properties.IsLeftButtonPressed && !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            SequencePointer(world);
+            if (e.ClickCount == 2 && _selectedSequence is not null) SequenceEditRequested?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+            return;
+        }
+        if (_model.Sequence is not null)
+        {
+            if (pt.Properties.IsMiddleButtonPressed || pt.Properties.IsRightButtonPressed || e.KeyModifiers.HasFlag(KeyModifiers.Control))
+                StartPan(pt.Position, e);
+            e.Handled = true;
+            return;
+        }
 
-        if (e.ClickCount == 2)
+        if (_entityConnectionSource is not null && pt.Properties.IsLeftButtonPressed &&
+            !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            var targetId = HitTest(world)?.Id ?? HitEntityGroup(world)?.Id;
+            try
+            {
+                if (targetId is null) { CancelEntityConnection(); SelectByIds([]); }
+                else CompleteEntityRelationship(targetId);
+            }
+            catch (ArgumentException error) { EntityConnectionMessage = error.Message; SelectionChanged?.Invoke(this, EventArgs.Empty); }
+            e.Handled = true;
+            return;
+        }
+
+        if (_classRelationshipSource is not null && pt.Properties.IsLeftButtonPressed &&
+            !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            try
+            {
+                if (HitTest(world) is { } target) CompleteClassRelationship(target);
+                else
+                {
+                    CancelClassRelationship();
+                    SelectByIds([]);
+                }
+            }
+            catch (ArgumentException error)
+            {
+                ClassRelationshipMessage = error.Message;
+                SelectionChanged?.Invoke(this, EventArgs.Empty);
+            }
+            e.Handled = true;
+            return;
+        }
+
+        if (e.ClickCount == 2 && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
             // Node, then link, then empty canvas — the same precedence as a
             // single click, so a double-click never means something different
@@ -597,9 +844,15 @@ public sealed class EditorCanvas : Control
             else if (HitTestEdge(world) is { } edge)
             {
                 _selection.Clear();
+                _groupSelection.Clear();
                 SelectedEdge = edge;
                 SelectionChanged?.Invoke(this, EventArgs.Empty);
                 BeginRelabel(edge);
+            }
+            else if (HitGroup(world) is { } group)
+            {
+                SelectGroup(group);
+                if (_model.EntityOptions is not null) EntityRenameRequested?.Invoke(this, EventArgs.Empty);
             }
             else CreateNodeAt(world);
 
@@ -619,7 +872,7 @@ public sealed class EditorCanvas : Control
         }
 
         // A handle on the selected node starts a connection.
-        if (Selected is { } sel)
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Shift) && Selected is { } sel)
         {
             foreach (var h in HandlePoints(sel))
             {
@@ -645,16 +898,14 @@ public sealed class EditorCanvas : Control
             }
             else if (!_selection.Contains(hit))
             {
+                _groupSelection.Clear();
                 _selection.Clear();
                 _selection.Add(hit);
             }
+            NormalizeGraphSelection();
             SelectionChanged?.Invoke(this, EventArgs.Empty);
 
-            _dragging = hit;
-            _dragOffset = new Point(world.X - hit.X, world.Y - hit.Y);
-            _dragStart.Clear();
-            foreach (var n in _selection) _dragStart.Add((n, n.X, n.Y));
-            e.Pointer.Capture(this);
+            BeginGraphDrag(world, e.Pointer, node: hit);
         }
         else if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
@@ -662,19 +913,39 @@ public sealed class EditorCanvas : Control
         }
         else if (HitTestEdge(world) is { } edge)
         {
+            _selectedGroup = null;
             // Tested after nodes, so a link running under a node never steals a
             // click meant for the node on top of it.
             _selection.Clear();
             SelectedEdge = edge;
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
+        else if (HitGroup(world) is { } group)
+        {
+            CancelEntityConnection(); ResetClassConnection();
+            _selectedEdge = null;
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            {
+                if (!_groupSelection.Add(group)) _groupSelection.Remove(group);
+            }
+            else if (!_groupSelection.Contains(group))
+            {
+                _selection.Clear(); _groupSelection.Clear(); _groupSelection.Add(group);
+            }
+            NormalizeGraphSelection();
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
+            BeginGraphDrag(world, e.Pointer, group: group);
+        }
         else
         {
+            _marqueeNodes = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? _selection.ToArray() : [];
+            _marqueeGroups = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? _groupSelection.ToArray() : [];
             _marqueeStart = pt.Position;
             _marquee = new Rect(pt.Position, pt.Position);
             if (!e.KeyModifiers.HasFlag(KeyModifiers.Shift))
             {
                 _selection.Clear();
+                _groupSelection.Clear();
                 SelectedEdge = null;
                 SelectionChanged?.Invoke(this, EventArgs.Empty);
             }
@@ -685,6 +956,8 @@ public sealed class EditorCanvas : Control
 
     private void StartPan(Point pos, PointerPressedEventArgs e)
     {
+        EndGraphDrag(cancel: true);
+        CancelWardleyDrag();
         _panFrom = pos;
         _panStartX = OffsetX; _panStartY = OffsetY;
         e.Pointer.Capture(this);
@@ -699,34 +972,40 @@ public sealed class EditorCanvas : Control
         base.OnPointerMoved(e);
         var pos = e.GetPosition(this);
         var world = ToWorld(pos);
+        if (_wardleyDragId is not null) { MoveWardleyDrag(world); return; }
+        if (_outlineDragStart is { } dataStart)
+        {
+            _outlineDragDelta = world - dataStart; InvalidateVisual(); return;
+        }
+        if (_model?.Chart is not null && _panFrom is null)
+        {
+            ChartPointerMove(world);
+            return;
+        }
+
+        if (_classRelationshipSource is not null && _panFrom is null)
+        {
+            _classRelationshipPoint = world;
+            var target = HitTest(world);
+            _classRelationshipTarget = target?.Class?.Kind == ClassNodeKind.Class &&
+                !ReferenceEquals(target, _classRelationshipSource) ? target : null;
+            InvalidateVisual();
+            return;
+        }
 
         if (_connectFrom is not null)
         {
             _connectTo = world;
             var hit = HitTest(world);
-            _connectTarget = ReferenceEquals(hit, _connectFrom) ? null : hit;
+            _connectTarget = ReferenceEquals(hit, _connectFrom) ||
+                _model?.ClassOptions is not null && hit?.Class?.Kind != ClassNodeKind.Class ? null : hit;
             InvalidateVisual();
             return;
         }
 
-        if (_dragging is not null)
+        if (_dragging is not null || _draggingGroup is not null)
         {
-            var nx = world.X - _dragOffset.X;
-            var ny = world.Y - _dragOffset.Y;
-            if (!e.KeyModifiers.HasFlag(KeyModifiers.Alt))
-            {
-                const double grid = 10;
-                nx = Math.Round(nx / grid) * grid;
-                ny = Math.Round(ny / grid) * grid;
-            }
-            var dx = nx - _dragging.X;
-            var dy = ny - _dragging.Y;
-            foreach (var n in _selection)
-            {
-                n.X += dx; n.Y += dy;
-                n.HasExplicitPosition = true;
-            }
-            InvalidateVisual();
+            MoveGraphDrag(world, e.KeyModifiers);
             return;
         }
 
@@ -752,50 +1031,66 @@ public sealed class EditorCanvas : Control
         var world = new Rect(ToWorld(_marquee.TopLeft), ToWorld(_marquee.BottomRight))
             .Normalize();
         _selection.Clear();
+        _selection.UnionWith(_marqueeNodes);
+        _groupSelection.Clear();
+        _groupSelection.UnionWith(_marqueeGroups);
         foreach (var n in _model.Nodes)
             if (world.Intersects(new Rect(n.X, n.Y, n.Width, n.Height)))
                 _selection.Add(n);
+        foreach (var group in _model.Subgraphs.Where(g => GraphGroupGeometry.IsVisible(_model, g)))
+        {
+            var bounds = GraphGroupGeometry.Bounds(_model, group);
+            if (world.Contains(new Point(bounds.X, bounds.Y)) && world.Contains(new Point(bounds.X + bounds.Width, bounds.Y + bounds.Height)))
+                _groupSelection.Add(group);
+        }
+        NormalizeGraphSelection();
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+        if (_wardleyDragId is not null) { EndWardleyDrag(); e.Pointer.Capture(null); e.Handled = true; return; }
+        if (_outlineDragStart is not null)
+        {
+            EndOutlineDrag(false); e.Pointer.Capture(null); e.Handled = true; return;
+        }
+        if (_chartDragTarget is not null)
+        {
+            CommitChartDrag(); e.Pointer.Capture(null); e.Handled = true; return;
+        }
 
         if (_connectFrom is not null)
         {
             if (_connectTarget is not null && _history is not null && _model is not null)
             {
-                var ord = _model.Edges.Count(x =>
-                    x.From == _connectFrom.Id && x.To == _connectTarget.Id);
-                _history.Apply(new AddEdgeCommand(new DiagramEdge
+                var ord = _model.Edges.Where(x =>
+                    x.From == _connectFrom.Id && x.To == _connectTarget.Id)
+                    .Select(x => x.Ordinal + 1).DefaultIfEmpty(0).Max();
+                var added = new DiagramEdge
                 {
                     From = _connectFrom.Id,
                     To = _connectTarget.Id,
                     Ordinal = ord,
-                }));
+                    EntityRelationship = _model.EntityOptions is null ? null : new(),
+                    Label = _model.EntityOptions is null ? null : "",
+                };
+                _history.Apply(_model.EntityOptions is null ? new AddEdgeCommand(added) : new AddEntityRelationshipCommand(added));
+                if (_model.EntityOptions is not null) SelectEdge(added);
                 ModelChanged?.Invoke(this, EventArgs.Empty);
             }
             _connectFrom = null;
             _connectTarget = null;
         }
-        else if (_dragging is not null && _history is not null)
+        else if (_dragging is not null || _draggingGroup is not null)
         {
-            var moves = _dragStart
-                .Where(s => Math.Abs(s.Node.X - s.X) > 0.01 ||
-                            Math.Abs(s.Node.Y - s.Y) > 0.01)
-                .Select(s => (s.Node, s.X, s.Y, s.Node.X, s.Node.Y))
-                .ToList();
-            if (moves.Count > 0)
-            {
-                _history.Record(new MoveNodesCommand(moves));
-                ModelChanged?.Invoke(this, EventArgs.Empty);
-            }
+            EndGraphDrag(cancel: false);
         }
 
         _dragging = null;
         _panFrom = null;
         _marqueeStart = null;
+        _marqueeNodes = []; _marqueeGroups = [];
 
         // Back to whatever the resting gesture is: the hand tool and a held
         // space both survive a release, an ordinary pan does not.
@@ -821,6 +1116,7 @@ public sealed class EditorCanvas : Control
     /// </remarks>
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
+        CancelWardleyDrag();
         base.OnPointerWheelChanged(e);
 
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
@@ -865,6 +1161,85 @@ public sealed class EditorCanvas : Control
     {
         base.OnKeyDown(e);
         if (_model is null || _history is null) return;
+        if ((IsWorkflowDiagram || IsStrategyDiagram || IsSetGrammarDiagram || IsOwnershipDiagram || _model.Requirements is not null || _model.GitDiagram is not null || _model.Sankey is not null || _model.Treemap is not null || _model.Blocks is not null || _model.Architecture is not null || _model.C4 is not null || _model.Gantt is not null) && e.Key == Key.Escape)
+        {
+            CancelWardleyDrag();
+            CancelRequirementConnection(); SelectStructural(null); e.Handled = true; return;
+        }
+        if ((IsWorkflowDiagram || IsStrategyDiagram || IsSetGrammarDiagram || IsOwnershipDiagram || _model.Requirements is not null || _model.GitDiagram is not null || _model.Sankey is not null || _model.Treemap is not null || _model.Blocks is not null || _model.Architecture is not null || _model.C4 is not null || _model.Gantt is not null) && e.Key == Key.F2)
+        {
+            StructuralEditRequested?.Invoke(this, EventArgs.Empty); e.Handled = true; return;
+        }
+        if ((_model.Outline is not null || _model.Temporal is not null || _model.Packet is not null || _model.Kanban is not null) && e.Key == Key.Escape)
+        {
+            EndOutlineDrag(true); SelectData(null); e.Handled = true; return;
+        }
+        if ((_model.Outline is not null || _model.Temporal is not null || _model.Packet is not null || _model.Kanban is not null) && e.Key == Key.F2)
+        {
+            DataEditRequested?.Invoke(this, EventArgs.Empty); e.Handled = true; return;
+        }
+        if (_model.Chart is not null && e.Key == Key.Escape)
+        {
+            CancelChartDrag(); SelectChart(null); e.Handled = true; return;
+        }
+        if (_model.Chart is not null && e.Key == Key.F2)
+        {
+            ChartEditRequested?.Invoke(this, EventArgs.Empty); e.Handled = true; return;
+        }
+        if (_model.Chart is not null && e.Key is Key.Delete or Key.Back)
+        {
+            DeleteChartSelection(); e.Handled = true; return;
+        }
+
+        if (_model.Sequence is not null && e.Key == Key.Escape)
+        {
+            if (_sequenceMessageSource is not null) CancelSequenceMessage();
+            else SelectSequence(null);
+            e.Handled = true;
+            return;
+        }
+        if (_model.Sequence is not null && e.Key is Key.Delete or Key.Back)
+        {
+            DeleteSequenceSelection(); e.Handled = true; return;
+        }
+        if (_model.Sequence is not null && e.Key == Key.F2)
+        {
+            SequenceEditRequested?.Invoke(this, EventArgs.Empty); e.Handled = true; return;
+        }
+        if (_entityConnectionSource is not null && e.Key == Key.Escape)
+        {
+            CancelEntityConnection(); e.Handled = true; return;
+        }
+        if (e.Key == Key.Escape && _classRelationshipSource is not null)
+        {
+            CancelClassRelationship();
+            e.Handled = true;
+            return;
+        }
+        if (_classRelationshipSource is not null && e.Key == Key.Tab)
+        {
+            var targets = _model.Nodes.Where(n => n.Class?.Kind == ClassNodeKind.Class &&
+                !ReferenceEquals(n, _classRelationshipSource)).ToArray();
+            if (targets.Length > 0)
+            {
+                var index = Array.IndexOf(targets, _classRelationshipTarget);
+                var step = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? -1 : 1;
+                index = index < 0 ? (step > 0 ? 0 : targets.Length - 1)
+                    : (index + step + targets.Length) % targets.Length;
+                _classRelationshipTarget = targets[index];
+                ClassRelationshipMessage = $"Target: {targets[index].Display}. Enter connects; Escape cancels.";
+                SelectionChanged?.Invoke(this, EventArgs.Empty);
+                InvalidateVisual();
+            }
+            e.Handled = true;
+            return;
+        }
+        if (_classRelationshipSource is not null && e.Key == Key.Enter)
+        {
+            if (_classRelationshipTarget is { } target) CompleteClassRelationship(target);
+            e.Handled = true;
+            return;
+        }
 
         // Space is a pan modifier, but only when not typing a label — inside
         // the inline editor a space is just a space.
@@ -883,6 +1258,8 @@ public sealed class EditorCanvas : Control
         switch (e.Key)
         {
             case Key.Delete or Key.Back when _selection.Count > 0:
+                EndGraphDrag(cancel: true);
+                ResetClassConnection();
                 _history.Apply(new DeleteNodesCommand(_selection.ToList()));
                 _selection.Clear();
                 SelectionChanged?.Invoke(this, EventArgs.Empty);
@@ -894,6 +1271,7 @@ public sealed class EditorCanvas : Control
             // is impossible to reach, and reached only when a link is what is
             // actually selected.
             case Key.Delete or Key.Back when _selectedEdge is { } edge:
+                ResetClassConnection();
                 _history.Apply(new DeleteEdgeCommand(edge));
                 SelectedEdge = null;
                 ModelChanged?.Invoke(this, EventArgs.Empty);
@@ -913,14 +1291,16 @@ public sealed class EditorCanvas : Control
                 Undo(); e.Handled = true; break;
 
             case Key.A when ctrl:
-                _selection.Clear();
-                foreach (var n in _model.Nodes) _selection.Add(n);
-                SelectionChanged?.Invoke(this, EventArgs.Empty);
+                SelectAll();
                 e.Handled = true;
                 break;
 
             case Key.F2 when Selected is { } s:
+                EndGraphDrag(cancel: true);
                 BeginRename(s); e.Handled = true; break;
+
+            case Key.F2 when SelectedEntityGroup is not null:
+                EntityRenameRequested?.Invoke(this, EventArgs.Empty); e.Handled = true; break;
 
             // H and V switch tools, as in Figma and Illustrator. Unmodified, so
             // they are guarded by the IsEditing check above — inside a label
@@ -935,8 +1315,13 @@ public sealed class EditorCanvas : Control
                 // The way out of any mode. Someone who has lost track of what a
                 // drag will do needs one key that restores the ordinary canvas,
                 // not a rule about which key exits which state.
+                EndGraphDrag(cancel: true);
                 Tool = CanvasTool.Select;
                 _selection.Clear();
+                _selectedEdge = null;
+                _selectedGroup = null;
+                _marqueeStart = null;
+                _marqueeNodes = []; _marqueeGroups = [];
                 SelectionChanged?.Invoke(this, EventArgs.Empty);
                 e.Handled = true;
                 break;
@@ -966,10 +1351,64 @@ public sealed class EditorCanvas : Control
 
     private void AfterHistory()
     {
+        _structuralCacheModel = null; _requirementSource = null; _gridConnectionSource = null;
+        CancelWardleyDrag();
+        if (_structuralSelection is { } structural &&
+            _model?.Requirements?.Items.Any(i => i.Id == structural.Id) != true &&
+            _model?.Requirements?.Relations.Any(r => r.Id == structural.Id) != true &&
+            _model?.GitDiagram?.Operations.Any(o => o.Id == structural.Id) != true &&
+            _model?.Sankey?.Nodes.Any(n => n.Id == structural.Id) != true &&
+            _model?.Sankey?.Links.Any(l => l.Id == structural.Id) != true &&
+            _model?.Treemap?.Nodes.Any(n => n.Id == structural.Id) != true &&
+            _model?.Blocks?.AllItems.Any(n => n.Id == structural.Id) != true &&
+            _model?.Blocks?.Connections.Any(e => e.Id == structural.Id) != true &&
+            _model?.Architecture?.Nodes.Any(n => n.Id == structural.Id) != true &&
+            _model?.Architecture?.Groups.Any(g => g.Id == structural.Id) != true &&
+            _model?.Architecture?.Connections.Any(e => e.Id == structural.Id) != true &&
+            _model?.C4?.Elements.Any(e => e.Id == structural.Id) != true &&
+            _model?.C4?.Relationships.Any(e => e.Id == structural.Id) != true &&
+            _model?.Gantt?.Tasks.Any(t => t.Id == structural.Id) != true &&
+            _model?.Gantt?.Sections.Any(s => s.Id == structural.Id) != true &&
+            _model?.Wardley?.Components.Any(c => c.Id == structural.Id) != true &&
+            _model?.Wardley?.Links.Any(l => l.Id == structural.Id) != true &&
+            _model?.Wardley?.Annotations.Any(a => a.Id == structural.Id) != true &&
+            _model?.Ishikawa?.AllCauses.Any(c => c.Id == structural.Id) != true &&
+            _model?.Cynefin?.Items.Any(i => i.Id == structural.Id) != true &&
+            _model?.Cynefin?.Transitions.Any(t => t.Id == structural.Id) != true &&
+            _model?.Venn?.Sets.Any(s => s.Id == structural.Id) != true &&
+            _model?.Venn?.Overlaps.Any(o => o.Id == structural.Id) != true &&
+            _model?.Venn?.Texts.Any(t => t.Id == structural.Id) != true &&
+            _model?.Railroad?.Rules.Any(r => r.Id == structural.Id || RailroadDiagramDocument.Walk(r.Expression).Any(e => e.Id == structural.Id)) != true &&
+            _model?.Swimlane?.Nodes.Any(n => n.Id == structural.Id) != true &&
+            _model?.Swimlane?.Groups.Any(g => g.Id == structural.Id) != true &&
+            _model?.Swimlane?.Links.Any(l => l.Id == structural.Id) != true &&
+            _model?.UseCase?.Nodes.Any(n => n.Id == structural.Id) != true &&
+            _model?.UseCase?.Boundaries.Any(b => b.Id == structural.Id) != true &&
+            _model?.UseCase?.Relationships.Any(r => r.Id == structural.Id) != true &&
+            _model?.AgentFlow?.Elements.Any(e => e.Id == structural.Id) != true &&
+            _model?.AgentFlow?.Links.Any(l => l.Id == structural.Id) != true &&
+            _model?.EventModeling?.Frames.Any(f => f.Id == structural.Id) != true &&
+            _model?.EventModeling?.DataBlocks.Any(d => d.Id == structural.Id) != true &&
+            _model?.Zen?.Participants.Any(p => p.Id == structural.Id) != true &&
+            (_model?.Zen is null || !ZenSemantics.Walk(_model.Zen.Statements).Any(s => s.Id == structural.Id)))
+            _structuralSelection = null;
+        _dataCacheModel = null; _outlineDragStart = null;
+        if (_dataSelection is { } dataTarget && !DataTargetExists(dataTarget)) _dataSelection = null;
+        CancelChartDrag(); _chartHover = null;
+        if (_chartSelection is { } chartTarget && !ChartTargetExists(chartTarget)) _chartSelection = null;
+        _sequenceMessageSource = null; _sequenceCacheModel = null;
+        if (_model?.Sequence is not null && _selectedSequence is { } sequenceSelection) SelectSequenceId(sequenceSelection.Id);
+        ResetClassConnection();
+        _entityConnectionSource = null; _entityReconnect = null;
         // Undo can resurrect or remove nodes; drop stale selection entries.
         if (_model is not null)
+        {
             _selection.RemoveWhere(n => !_model.Nodes.Contains(n));
+            if (_selectedEdge is not null && !_model.Edges.Contains(_selectedEdge)) _selectedEdge = null;
+            _groupSelection.RemoveWhere(g => !_model.Subgraphs.Contains(g));
+        }
         MeasureLabels();
+        HistoryNavigated?.Invoke(this, EventArgs.Empty);
         SelectionChanged?.Invoke(this, EventArgs.Empty);
         ModelChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -987,9 +1426,26 @@ public sealed class EditorCanvas : Control
             Y = Math.Round((world.Y - 23) / 10) * 10,
             HasExplicitPosition = true,
         };
+        if (_model.ClassOptions is not null)
+        {
+            node.Class = new ClassNodeDefinition();
+            node.Label = "New class";
+            node.Width = 240;
+            node.Height = 100;
+        }
+        else if (_model.Kind is "stateDiagram" or "stateDiagram-v2")
+        {
+            node.Label = "New state";
+            node.Shape = NodeShape.RoundedRect;
+        }
+        else if (_model.EntityOptions is not null)
+        {
+            node.Entity = new EntityNodeDefinition(); node.Label = "New entity"; node.Width = 280; node.Height = 100;
+        }
         MeasureNode(node);
-        _history.Apply(new AddNodeCommand(node));
+        _history.Apply(_model.EntityOptions is null ? new AddNodeCommand(node) : new AddEntityCommand(node));
         _selection.Clear();
+        _groupSelection.Clear();
         _selection.Add(node);
         SelectionChanged?.Invoke(this, EventArgs.Empty);
         ModelChanged?.Invoke(this, EventArgs.Empty);
@@ -1013,6 +1469,12 @@ public sealed class EditorCanvas : Control
     /// </summary>
     private void BeginRename(DiagramNode n)
     {
+        if (n.Entity is not null)
+        {
+            SelectByIds([n.Id]);
+            EntityRenameRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
         _editingEdge = null;
         _editing = n;
         _editBuffer = n.Label ?? "";
@@ -1111,14 +1573,16 @@ public sealed class EditorCanvas : Control
         InvalidateVisual();
     }
 
-    public void Undo() { _history?.Undo(); AfterHistory(); InvalidateVisual(); }
-    public void Redo() { _history?.Redo(); AfterHistory(); InvalidateVisual(); }
+    public void Undo() { EndGraphDrag(cancel: true); _history?.Undo(); AfterHistory(); InvalidateVisual(); }
+    public void Redo() { EndGraphDrag(cancel: true); _history?.Redo(); AfterHistory(); InvalidateVisual(); }
 
     // ------------------------------------------- commands the menu also uses
 
     /// <summary>Zoom about the centre of the viewport, as a menu item must.</summary>
     public void ZoomBy(double factor)
     {
+        EndGraphDrag(cancel: true);
+        CancelWardleyDrag();
         var centre = new Point(Bounds.Width / 2, Bounds.Height / 2);
         var before = ToWorld(centre);
         Zoom = Math.Clamp(Zoom * factor, 0.08, 6.0);
@@ -1133,6 +1597,9 @@ public sealed class EditorCanvas : Control
     public void SelectAll()
     {
         if (_model is null) return;
+        ResetClassConnection();
+        EndGraphDrag(cancel: true);
+        _selectedGroup = null;
         _selection.Clear();
         foreach (var n in _model.Nodes) _selection.Add(n);
         _selectedEdge = null;
@@ -1142,6 +1609,12 @@ public sealed class EditorCanvas : Control
 
     public void DeleteSelection()
     {
+        EndGraphDrag(cancel: true);
+        if (IsStrategyDiagram || _model?.Requirements is not null || _model?.GitDiagram is not null || _model?.Blocks is not null || _model?.Architecture is not null || _model?.C4 is not null || _model?.Gantt is not null) { DeleteStructuralSelection(); return; }
+        if (_model?.Outline is not null || _model?.Temporal is not null || _model?.Packet is not null || _model?.Kanban is not null) { DeleteDataSelection(); return; }
+        if (_model?.Chart is not null) { DeleteChartSelection(); return; }
+        if (_model?.Sequence is not null) { DeleteSequenceSelection(); return; }
+        ResetClassConnection();
         if (_history is null) return;
 
         // A link, when that is what is selected. Menu Delete and the Delete key
@@ -1202,6 +1675,10 @@ public sealed class EditorCanvas : Control
     /// <summary>Select a link, or clear the link selection.</summary>
     public void SelectEdge(DiagramEdge? edge)
     {
+        ResetClassConnection();
+        CancelEntityConnection();
+        EndGraphDrag(cancel: true);
+        _selectedGroup = null;
         if (edge is not null) _selection.Clear();
         SelectedEdge = edge;
         SelectionChanged?.Invoke(this, EventArgs.Empty);
@@ -1212,6 +1689,10 @@ public sealed class EditorCanvas : Control
     public void SelectByIds(IEnumerable<string> ids)
     {
         if (_model is null) return;
+        ResetClassConnection();
+        CancelEntityConnection();
+        EndGraphDrag(cancel: true);
+        _selectedGroup = null;
         var want = ids.ToHashSet();
         _selection.Clear();
         foreach (var n in _model.Nodes)
@@ -1251,11 +1732,26 @@ public sealed class EditorCanvas : Control
     public void AddFromPalette(PaletteItem item, Point worldCentre)
     {
         if (_model is null || _history is null) return;
+        if (_model.Sequence is not null) throw new ArgumentException("Sequence diagrams use participant and interaction controls, not graph shapes.", nameof(item));
+        if (_model.Chart is not null) throw new ArgumentException("Charts use data controls, not graph shapes.", nameof(item));
+        if (_model.Outline is not null || _model.Temporal is not null || _model.Packet is not null || _model.Kanban is not null) throw new ArgumentException("This diagram uses typed structured controls.", nameof(item));
+        if (_model.Requirements is not null || _model.GitDiagram is not null) throw new ArgumentException("Use typed requirement/GitGraph controls.", nameof(item));
+        var state = _model.Kind is "stateDiagram" or "stateDiagram-v2";
+        var pseudoId = state ? item.Name switch
+        {
+            "Start" => Core.Parsing.StateAdapter.StartId,
+            "End" => Core.Parsing.StateAdapter.EndId,
+            _ => null,
+        } : null;
+        if (state && item.Name is not ("Start" or "State" or "End"))
+            throw new ArgumentException("This shape is not a supported state-diagram tool.", nameof(item));
+        if (pseudoId is not null && _model.Node(pseudoId) is not null)
+            throw new ArgumentException($"This diagram already has a {item.Name.ToLowerInvariant()} marker. Select it on the canvas.");
 
         var node = new DiagramNode
         {
-            Id = NextId(),
-            Label = item.Label,
+            Id = pseudoId ?? NextId(),
+            Label = pseudoId is null ? item.Label : "",
             Shape = item.Shape,
             Icon = item.Icon,
             Fill = item.Fill,
@@ -1276,10 +1772,11 @@ public sealed class EditorCanvas : Control
 
         _history.Apply(new AddNodeCommand(node));
         _selection.Clear();
+        _groupSelection.Clear();
         _selection.Add(node);
         SelectionChanged?.Invoke(this, EventArgs.Empty);
         ModelChanged?.Invoke(this, EventArgs.Empty);
-        BeginRename(node);
+        if (pseudoId is null) BeginRename(node);
         InvalidateVisual();
     }
 
@@ -1407,6 +1904,23 @@ public sealed class EditorCanvas : Control
         foreach (var e in _model.Edges)
         {
             if (e.Kind == EdgeKind.Invisible) continue;
+            if (e.EntityRelationship is not null)
+            {
+                var route = EntityDiagramGeometry.Route(_model, e);
+                var distance = Enumerable.Range(1, route.Count - 1).Min(i =>
+                    DistanceToSegment(world, new(route[i - 1].X, route[i - 1].Y), new(route[i].X, route[i].Y)));
+                if (distance <= tolerance && distance < nearest) { best = e; nearest = distance; }
+                continue;
+            }
+            if (e.ClassRelationship is null)
+            {
+                var route = GraphEdgeGeometry.Route(_model, e);
+                if (route.Count < 2) continue;
+                var distance = Enumerable.Range(1, route.Count - 1).Min(i =>
+                    DistanceToSegment(world, new(route[i - 1].X, route[i - 1].Y), new(route[i].X, route[i].Y)));
+                if (distance <= tolerance && distance < nearest) { best = e; nearest = distance; }
+                continue;
+            }
 
             var a = _model.Node(e.From);
             var b = _model.Node(e.To);
@@ -1417,6 +1931,13 @@ public sealed class EditorCanvas : Control
             var p1 = EdgePoint(a, cb);
             var p2 = EdgePoint(b, ca);
 
+            if (e.ClassRelationship is not null)
+            {
+                var from = ClassDiagramGeometry.Anchor(a, ClassDiagramGeometry.Center(b));
+                var to = ClassDiagramGeometry.Anchor(b, ClassDiagramGeometry.Center(a));
+                p1 = new Point(from.X, from.Y);
+                p2 = new Point(to.X, to.Y);
+            }
             var d = DistanceToSegment(world, p1, p2);
             if (d > tolerance || d >= nearest) continue;
 

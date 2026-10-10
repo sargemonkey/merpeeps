@@ -71,18 +71,21 @@ async function main() {
       { timeout: 120_000 }).then((h) => h.jsonValue());
 
     // Guard against silent shrinkage of the tested surface.
-    const MIN_RENDERABLE = Number(process.env.MERPEEPS_MIN_RENDERABLE ?? 30);
+    const MIN_RENDERABLE = Number(process.env.MERPEEPS_MIN_RENDERABLE ?? 32);
     const shrunk = result.renderable < MIN_RENDERABLE;
+    const unexpectedUnavailable = result.notRenderable.filter(type => type !== 'zenuml');
 
     const report = {
       ...result,
       pageErrors: errors,
       minRenderableExpected: MIN_RENDERABLE,
       surfaceShrunk: shrunk,
+      unexpectedUnavailable,
     };
     console.log(JSON.stringify(report, null, 2));
 
-    exitCode = (result.verdict === 'CONFORMANT' && !shrunk) ? 0 : 1;
+    exitCode = (result.verdict === 'CONFORMANT' && !shrunk &&
+      unexpectedUnavailable.length === 0) ? 0 : 1;
     if (shrunk) {
       console.error(
         `oracle: only ${result.renderable} diagram types rendered, expected ` +

@@ -17,6 +17,8 @@ public sealed class DiagramNode
     public string? Label { get; set; }
     public NodeShape Shape { get; set; } = NodeShape.Rectangle;
     public string? SubgraphId { get; set; }
+    public ClassNodeDefinition? Class { get; set; }
+    public EntityNodeDefinition? Entity { get; set; }
 
     /// <summary>Index of the source line that declared this node.</summary>
     public int SourceLine { get; set; } = -1;
@@ -35,6 +37,7 @@ public sealed class DiagramNode
     public double Width { get; set; } = 160;
     public double Height { get; set; } = 56;
     public bool HasExplicitPosition { get; set; }
+    public bool HasExplicitSize { get; set; }
 
     // Presentation carried in the Merpeeps style block. None of this is expressible
     // in mermaid syntax, which is exactly why it lives in the metadata layer:
@@ -53,7 +56,7 @@ public sealed class DiagramNode
     /// </summary>
     public string? Icon { get; set; }
 
-    public string Display => Label ?? Id;
+    public string Display => Label ?? Class?.ReferenceName ?? Id;
 }
 
 public sealed class DiagramEdge
@@ -62,6 +65,8 @@ public sealed class DiagramEdge
     public required string To { get; init; }
     public string? Label { get; set; }
     public EdgeKind Kind { get; set; } = EdgeKind.Arrow;
+    public ClassRelationship? ClassRelationship { get; set; }
+    public EntityRelationship? EntityRelationship { get; set; }
     public int SourceLine { get; set; } = -1;
 
     /// <summary>
@@ -86,6 +91,9 @@ public sealed class DiagramSubgraph
 {
     public required string Id { get; init; }
     public string? Title { get; set; }
+    public string? ParentId { get; set; }
+    public bool IsExplicit { get; set; } = true;
+    public Direction? Direction { get; set; }
     public List<string> NodeIds { get; } = new();
 }
 
@@ -101,6 +109,32 @@ public sealed class DiagramModel
 {
     public string Kind { get; set; } = "flowchart";
     public Direction Direction { get; set; } = Direction.TB;
+    public ClassDiagramOptions? ClassOptions { get; set; }
+    public EntityDiagramOptions? EntityOptions { get; set; }
+    public SequenceDiagramModel? Sequence { get; set; }
+    public ChartDocument? Chart { get; set; }
+    public OutlineDocument? Outline { get; set; }
+    public TemporalDocument? Temporal { get; set; }
+    public PacketDocument? Packet { get; set; }
+    public KanbanDocument? Kanban { get; set; }
+    public RequirementDocument? Requirements { get; set; }
+    public GitGraphDocument? GitDiagram { get; set; }
+    public SankeyDocument? Sankey { get; set; }
+    public TreemapDocument? Treemap { get; set; }
+    public BlockDiagramDocument? Blocks { get; set; }
+    public ArchitectureDiagramDocument? Architecture { get; set; }
+    public C4DiagramDocument? C4 { get; set; }
+    public GanttDiagramDocument? Gantt { get; set; }
+    public IshikawaDocument? Ishikawa { get; set; }
+    public CynefinDocument? Cynefin { get; set; }
+    public WardleyDiagramDocument? Wardley { get; set; }
+    public RailroadDiagramDocument? Railroad { get; set; }
+    public VennDiagramDocument? Venn { get; set; }
+    public SwimlaneDiagramDocument? Swimlane { get; set; }
+    public UseCaseDiagramDocument? UseCase { get; set; }
+    public AgentFlowDocument? AgentFlow { get; set; }
+    public EventModelingDocument? EventModeling { get; set; }
+    public ZenDiagramDocument? Zen { get; set; }
 
     /// <summary>
     /// Which layout engine produced the stored coordinates, or "manual" when a
@@ -125,6 +159,10 @@ public sealed class DiagramModel
     public List<DiagramNode> Nodes { get; } = new();
     public List<DiagramEdge> Edges { get; } = new();
     public List<DiagramSubgraph> Subgraphs { get; } = new();
+    /// <summary>Explicit frames for empty graph containers; populated frames follow their members.</summary>
+    public Dictionary<string, DiagramRect> GroupLayouts { get; } = new(StringComparer.Ordinal);
+    public RenderedGraphGeometry? RenderedGeometry { get; set; }
+    public Dictionary<string, IReadOnlyList<DiagramPoint>> EdgeWaypoints { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Layout expressed as relationships — "these share a rank", "this order" —

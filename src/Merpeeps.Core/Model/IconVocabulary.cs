@@ -95,12 +95,27 @@ public static partial class IconVocabulary
     /// icons" instead of quietly drawing plain boxes and leaving the person to
     /// wonder what happened.</para>
     /// </summary>
-    public static IReadOnlyList<string> PacksReferencedBy(DiagramModel model)
+    public static IReadOnlyList<string> PacksReferencedBy(DiagramModel model) =>
+        PacksIn(model.Nodes.Select(n => n.Icon));
+
+    /// <summary>Read pack references without requiring a native diagram adapter.</summary>
+    public static IReadOnlyList<string> PacksReferencedByMetadata(object? metadata)
+    {
+        if (metadata is not Dictionary<string, object?> root ||
+            root.GetValueOrDefault("style") is not Dictionary<string, object?> style ||
+            style.GetValueOrDefault("nodes") is not Dictionary<string, object?> nodes)
+            return [];
+
+        return PacksIn(nodes.Values.OfType<Dictionary<string, object?>>()
+            .Select(n => n.GetValueOrDefault("icon") as string));
+    }
+
+    private static IReadOnlyList<string> PacksIn(IEnumerable<string?> icons)
     {
         var seen = new List<string>();
-        foreach (var node in model.Nodes)
+        foreach (var icon in icons)
         {
-            if (PackOf(node.Icon) is not { } pack) continue;
+            if (PackOf(icon) is not { } pack) continue;
             if (!seen.Contains(pack, StringComparer.OrdinalIgnoreCase)) seen.Add(pack);
         }
         return seen;

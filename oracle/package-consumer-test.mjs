@@ -44,6 +44,7 @@ try {
 import { getPositions, setPositions, getStyles, setStyles,
          validate, strip, staleIds } from 'merpeeps-mermaid-layout';
 import { registerMerpeepsLayout, renderWithLayout, LAYOUT_NAME } from 'merpeeps-mermaid-layout/mermaid';
+import { harvestRenderedGeometry, replayRenderedGeometry, harvestTextGeometry } from 'merpeeps-mermaid-layout/geometry';
 
 const src = \`---
 title: Payments
@@ -79,6 +80,8 @@ check('idempotent', setPositions(styled, getPositions(styled)) === styled);
 check('merpeeps-mermaid-layout/mermaid resolves', typeof registerMerpeepsLayout === 'function');
 check('renderWithLayout is exported', typeof renderWithLayout === 'function');
 check('layout name is stable', LAYOUT_NAME === 'merpeeps');
+check('new geometry subpath resolves from the actual tarball',
+  [harvestRenderedGeometry, replayRenderedGeometry, harvestTextGeometry].every(fn => typeof fn === 'function'));
 
 // The plugin must not need mermaid at import time — the caller supplies it.
 check('plugin registers against a stand-in mermaid', (() => {

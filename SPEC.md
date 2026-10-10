@@ -56,6 +56,39 @@ flowchart TD
 
 Every key is **optional**. A file carrying only `layout.nodes` is valid.
 
+`layout.groups` optionally stores bounds for empty Flowchart/State groups,
+Class namespaces and ER subgraphs, keyed by the group's declared identity
+(qualified identity for a namespace):
+
+```yaml
+layout:
+  groups:
+    EmptyGroup: { x: 120, y: 80, w: 240, h: 100 }
+```
+
+Coordinates must be finite and dimensions positive. Populated group frames
+derive from their members rather than overriding them with these bounds.
+An absent/null entry, or one whose four known geometry fields are all absent/null,
+means no explicit frame. This permits Undo to clear geometry while preserving
+unknown fields. Stale identities and unknown fields are retained under the same
+rules as node metadata. Stock Mermaid ignores the extension.
+
+`layout.rendered` is an explicit Flowchart reference-geometry snapshot with its
+own `spec: 1`. It contains `nodes` (bounds, text signature and optional font/line
+placement), `groups` (bounds, ownership member IDs, optional fill/stroke and
+title placement), and `edges` (complete sampled route points and optional label
+placement), plus an optional diagram caption. All coordinates use SVG diagram
+units, not viewport pixels. Node positions/dimensions also remain in `layout.nodes`.
+
+Native rendering checks the snapshot's anchor dimensions and memberships.
+Uniform translations can reuse translated geometry; nonuniform endpoint/member
+movement falls back to native geometry rather than drawing a stale connector.
+The enhanced browser preview rejects a stale snapshot with a diagnostic.
+Unsupported snapshot versions and invalid dimensions fail explicitly.
+Ordinary stock Mermaid ignores the entire extension and remains unaffected.
+Absolute intermediate `layout.edges.<edge-key>.waypoints` are also supported by
+native rendering and SVG export; the snapshot's complete route takes precedence.
+
 ## 2. Identity (the hard part)
 
 The spec joins to the diagram by **entity id**. Mermaid has no universal id
@@ -250,4 +283,3 @@ arrangement, and nothing else can. It is demoted, not removed.
 - Should `semantics.kind` use a closed C4 vocabulary or be free-form?
 - Should edge waypoints be absolute or relative to endpoints?
 - Do we normalise colour to hex, or preserve author input?
-

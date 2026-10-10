@@ -233,3 +233,30 @@ format this tool reads and writes.
 
 MIT licensed. Not affiliated with, endorsed by, or sponsored by Mermaid Chart
 Inc. or the Mermaid open-source project.
+## Explicit rendered geometry
+
+This JavaScript package is the Merpie **companion**, not an equivalent port of
+the C# typed authoring engine. It does not implement 33-family parsing/edit
+commands or ship a desktop/browser editor. Core authoring stays in .NET.
+
+The prerelease adds typed browser geometry exports:
+
+```js
+import { harvestRenderedGeometry } from 'merpeeps-mermaid-layout/geometry';
+const geometry = harvestRenderedGeometry(document.querySelector('svg'));
+```
+
+The CLI's opt-in `adopt --geometry` path stores a Flowchart's rendered dimensions,
+group frames, line-level label placement and sampled connector paths under
+`x-merpeeps.layout.rendered`. `renderWithLayout` replays that complete snapshot
+instead of falling back to automatic layout for grouped diagrams.
+
+The self-contained `merpeeps preview` page exposes
+`await window.merpeepsHarvestGeometry()` for capturing the visible SVG. Source
+identities/content and ownership must match the captured scene. Stale content,
+sizes, memberships or endpoint arrangements are reported explicitly; re-adopt
+when reference fidelity is needed after structural edits. Legacy position-only
+files and stock Mermaid behavior remain unchanged.
+
+Coordinates are in SVG diagram units. Curves use sampled polylines, and native
+fonts/shape details are not a promise of pixel-identical browser rasterization.

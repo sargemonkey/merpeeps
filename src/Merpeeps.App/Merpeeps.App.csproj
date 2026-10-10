@@ -4,6 +4,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Merpie.App</AssemblyName>
+    <Version>0.1.0-preview.1</Version>
+    <RootNamespace>Merpeeps.App</RootNamespace>
+    <Product>Merpie</Product>
+    <Title>Merpie</Title>
+    <AssemblyTitle>Merpie</AssemblyTitle>
+    <Description>Merpie - native visual editor for Mermaid diagrams.</Description>
+    <ApplicationIcon>Assets\Brand\merpie-app-icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
@@ -27,6 +35,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Merpeeps.App.Tests" />
+    <AvaloniaResource Include="Assets\Fonts\*.ttf" />
+    <AvaloniaResource Include="Assets\Brand\*.png;Assets\Brand\*.ico" />
+    <Content Include="Assets\Brand\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\*-OFL.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
-

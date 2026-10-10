@@ -71,7 +71,7 @@ public class MainWindowTests
         Assert.NotNull(Find<ScrollViewer>(window, "PropertyPane"));
         Assert.NotNull(Find<DockPanel>(window, "SourcePane"));
         Assert.NotNull(Find<ComboBox>(window, "EngineBox"));
-        Assert.NotNull(Find<ComboBox>(window, "CollectionBox"));
+        Assert.NotNull(Find<TextBlock>(window, "PaletteTitle"));
     }
 
     /// <summary>
@@ -173,32 +173,30 @@ public class MainWindowTests
     // -------------------------------------------------------- shape palette
 
     [AvaloniaFact]
-    public void ThePaletteOffersEveryCollection()
+    public void ThePaletteDoesNotOfferStencilCategoriesAsDiagramTypes()
     {
         var (window, _) = Open(Styled);
-        var box = Find<ComboBox>(window, "CollectionBox");
-
-        Assert.Equal(NodePalette.All.Count, box.ItemCount);
-        Assert.IsType<PaletteCollection>(box.SelectedItem);
+        Assert.Null(window.FindControl<ComboBox>("CollectionBox"));
+        Assert.Equal("Flowchart shapes", Find<TextBlock>(window, "PaletteTitle").Text);
+        Assert.Equal(NodePalette.Flowchart.Items, Find<ListBox>(window, "PaletteList").Items.Cast<PaletteItem>());
     }
 
     [AvaloniaFact]
-    public void ChoosingACollectionRepopulatesTheShapes()
+    public void LoadingADifferentFamilyChangesTheAvailableTools()
     {
         var (window, _) = Open(Styled);
-        var box = Find<ComboBox>(window, "CollectionBox");
         var list = Find<ListBox>(window, "PaletteList");
-
-        for (var i = 0; i < NodePalette.All.Count; i++)
-        {
-            box.SelectedIndex = i;
-            Settle();
-
-            var expected = NodePalette.All[i];
-            Assert.Equal(expected.Items.Count, list.ItemCount);
-            Assert.All(list.ItemsSource!.Cast<object>(),
-                o => Assert.IsType<PaletteItem>(o));
-        }
+        window.LoadSourceForTest("stateDiagram-v2\nIdle --> Running\n");
+        Settle();
+        Assert.Equal("State diagram tools", Find<TextBlock>(window, "PaletteTitle").Text);
+        Assert.Equal(new[] { "Start", "State", "End" }, list.Items.Cast<PaletteItem>().Select(i => i.Name));
+        window.LoadSourceForTest("classDiagram\nclass Account\n");
+        Settle();
+        Assert.True(Find<DockPanel>(window, "NodePane").IsVisible);
+        Assert.True(Find<ScrollViewer>(window, "FamilyPaletteScroller").IsVisible);
+        Assert.Empty(list.Items);
+        window.LoadSourceForTest(Styled);
+        Assert.Equal(NodePalette.Flowchart.Items, list.Items.Cast<PaletteItem>());
     }
 
     /// <summary>
@@ -294,6 +292,10 @@ public class MainWindowTests
         var pane = Find<DockPanel>(window, "SourcePane");
         var menu = Find<MenuItem>(window, "MenuShowSource");
 
+        Assert.False(pane.IsVisible);
+        menu.IsChecked = true;
+        menu.RaiseClick();
+        Settle();
         Assert.True(pane.IsVisible);
 
         menu.IsChecked = false;

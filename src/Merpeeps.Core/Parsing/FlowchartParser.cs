@@ -15,7 +15,7 @@ public static class FlowchartParser
 {
     // flowchart TD / graph LR / flowchart-elk TB
     private static readonly Regex Header = new(
-        @"^\s*(?<kind>flowchart(?:-elk)?|graph)\s+(?<dir>TB|TD|BT|LR|RL)?\s*$",
+        @"^\s*(?<kind>flowchart(?:-elk)?|graph)(?:\s+(?<dir>TB|TD|BT|LR|RL))?\s*;?\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex SubgraphOpen = new(
@@ -47,6 +47,7 @@ public static class FlowchartParser
         ("{", "}", NodeShape.Rhombus),
         ("[", "]", NodeShape.Rectangle),
     };
+    internal static IReadOnlyList<(string Open, string Close, NodeShape Shape)> ShapeForms => Shapes;
 
     // Link operators, longest first so "-.->" is not read as "-".
     private static readonly (string Op, EdgeKind Kind)[] Links =
@@ -79,11 +80,17 @@ public static class FlowchartParser
 
         var subgraphStack = new Stack<DiagramSubgraph>();
         var headerSeen = false;
+        var inDirective = false;
         var edgeOrdinals = new Dictionary<string, int>();
 
         for (var i = 0; i < lines.Length; i++)
         {
             var raw = lines[i];
+            if (DiagramAdapters.IsCommentLine(raw.Trim(), ref inDirective))
+            {
+                Keep(model, i, raw);
+                continue;
+            }
             var line = StripInlineComment(raw).Trim();
 
             if (line.Length == 0) { Keep(model, i, raw); continue; }
@@ -113,6 +120,7 @@ public static class FlowchartParser
                 var s = new DiagramSubgraph
                 {
                     Id = sg.Groups["id"].Value,
+                    ParentId = subgraphStack.TryPeek(out var parent) ? parent.Id : null,
                     Title = sg.Groups["title"].Success
                         ? sg.Groups["title"].Value : null,
                 };
@@ -440,5 +448,3 @@ public static class FlowchartParser
         _ => NodeShape.Rectangle,
     };
 }
-
-

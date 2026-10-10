@@ -6,9 +6,11 @@
     <Project Path="src/Merpeeps.Core/Merpeeps.Core.csproj" />
     <Project Path="src/Merpeeps.Render/Merpeeps.Render.csproj" />
     <Project Path="src/Merpeeps.Mcp/Merpeeps.Mcp.csproj" />
+    <Project Path="src/Merpeeps.Scene/Merpeeps.Scene.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Merpeeps.App.Tests/Merpeeps.App.Tests.csproj" />
     <Project Path="tests/Merpeeps.Core.Tests/Merpeeps.Core.Tests.csproj" />
+    <Project Path="tests/Merpeeps.Scene.Tests/Merpeeps.Scene.Tests.csproj" />
   </Folder>
 </Solution>

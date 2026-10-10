@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
@@ -46,16 +47,17 @@ public partial class MainWindow
         void On(string name, Action act) =>
             Need<MenuItem>(name).Click += (_, _) => act();
 
-        On("MenuNew", () => LoadSource("flowchart TD\n    a[New node]\n", null));
+        On("MenuNew", async () => await NewDiagram());
         On("MenuOpen", () => OnOpen(this, new Avalonia.Interactivity.RoutedEventArgs()));
         On("MenuSave", () => OnSave(this, new Avalonia.Interactivity.RoutedEventArgs()));
         On("MenuSaveAs", async () => await SaveAs());
         On("MenuExport", async () => await ExportPlain());
         On("MenuExportBaked", async () => await ExportBaked());
         On("MenuExportSvg", async () => await ExportSvg());
-        On("MenuSample", () => LoadSource(Sample, null));
+        On("MenuSample", () => { if (CanLeaveInspectorDraft()) LoadSource(Sample, null); });
         On("MenuExit", () =>
         {
+            if (!CanLeaveInspectorDraft()) return;
             if (Application.Current?.ApplicationLifetime
                 is IClassicDesktopStyleApplicationLifetime d) d.Shutdown();
         });
@@ -64,7 +66,24 @@ public partial class MainWindow
         On("MenuRedo", () => { _canvas.Redo(); _canvas.Focus(); });
         On("MenuSelectAll", () => { _canvas.SelectAll(); _canvas.Focus(); });
         On("MenuDelete", () => { _canvas.DeleteSelection(); _canvas.Focus(); });
-        On("MenuRename", () => { _canvas.RenameSelected(); _canvas.Focus(); });
+        On("MenuRename", () =>
+        {
+            if (_canvas.IsWorkflowDiagram || _canvas.IsOwnershipDiagram || _canvas.IsStrategyDiagram || _canvas.IsSetGrammarDiagram || _canvas.Model?.Requirements is not null || _canvas.Model?.GitDiagram is not null || _canvas.Model?.Sankey is not null || _canvas.Model?.Treemap is not null || _canvas.Model?.Blocks is not null || _canvas.Model?.Architecture is not null || _canvas.Model?.C4 is not null || _canvas.Model?.Gantt is not null) _classInspector?.EditStructuralSelection();
+            else if (_canvas.Model?.Outline is not null || _canvas.Model?.Temporal is not null || _canvas.Model?.Packet is not null || _canvas.Model?.Kanban is not null) _classInspector?.EditDataSelection();
+            else if (_canvas.Model?.Chart is not null) _classInspector?.EditChartSelection();
+            else if (_canvas.Model?.Sequence is not null) _classInspector?.EditSequenceSelection();
+            else { _canvas.RenameSelected(); _canvas.Focus(); }
+        });
+        On("MenuClassAdd", () => _classInspector?.AddClass());
+        On("MenuClassNote", () => _classInspector?.AddDiagramNote());
+        On("MenuClassNamespaces", () => _classInspector?.ManageNamespaces());
+        On("MenuClassDisplay", () => _classInspector?.DisplayOptions());
+        On("MenuClassNavigate", () => _classInspector?.NavigateElements());
+        On("MenuDiagramTitle", () => _classInspector?.EditDiagramTitle());
+        On("MenuQuadrantLabels", () => _classInspector?.EditQuadrantLabels());
+        On("MenuArchitectureAlignment", () => _classInspector?.EditArchitectureAlignment());
+        On("MenuGanttReference", () => _canvas.SetGanttContext(EditorCanvas.CaptureGanttContext()));
+        On("MenuIshikawaProblem", () => _classInspector?.DisplayOptions());
 
         On("MenuZoomIn", () => { _canvas.ZoomBy(1.2); _canvas.Focus(); });
         On("MenuZoomOut", () => { _canvas.ZoomBy(1 / 1.2); _canvas.Focus(); });
@@ -74,8 +93,15 @@ public partial class MainWindow
 
         // Pane visibility. Collapsing a column rather than hiding the control
         // so the splitter and the space both go with it.
-        WirePaneToggle("MenuShowNodes", "NodePane", 0, 1, 220);
+        WirePaneToggle("MenuShowNodes", "NodePane", 0, 1, 80);
         WirePaneToggle("MenuShowSource", "SourcePane", 6, 5, 360);
+        Need<ToggleButton>("SourceToggle").IsCheckedChanged += (_, _) =>
+            SetSourcePaneVisible(Need<ToggleButton>("SourceToggle").IsChecked == true);
+        SizeChanged += (_, _) => UpdateWorkspacePanes();
+        _canvas.SizeChanged += (_, _) =>
+        {
+            if (_canvas.Model?.Blocks is not null || _canvas.Model?.Architecture is not null || _canvas.Model?.C4 is not null) _canvas.FitToView();
+        };
         WireReferencePane();
 
         var styling = Need<MenuItem>("MenuShowStyling");
@@ -123,16 +149,43 @@ public partial class MainWindow
             var pane = Need<Control>(paneName);
             var grid = (Grid)pane.Parent!;
             var show = menu.IsChecked;
-
-            pane.IsVisible = show;
-            grid.ColumnDefinitions[column].Width =
-                show ? new GridLength(width) : new GridLength(0);
-            grid.ColumnDefinitions[splitterColumn].Width =
-                show ? GridLength.Auto : new GridLength(0);
-
-            foreach (var s in grid.Children.OfType<GridSplitter>())
-                if (Grid.GetColumn(s) == splitterColumn) s.IsVisible = show;
+            if (paneName == "SourcePane") SetSourcePaneVisible(show);
+            else SetPaneVisibility(pane, grid, column, splitterColumn,
+                paneName == "NodePane" ? PaletteWidth : width, show);
         };
+    }
+    private bool? _compactWorkspace;
+    private void UpdateWorkspacePanes()
+    {
+        var compact = Bounds.Width is > 0 and < 1100;
+        var changed = _compactWorkspace != compact;
+        _compactWorkspace = compact;
+        var grid = Need<Grid>("WorkspaceGrid");
+        if (changed) grid.ColumnDefinitions[4].Width = new GridLength(compact ? 264 : 288);
+        var show = Need<MenuItem>("MenuShowNodes").IsChecked;
+        if (changed || Need<Control>("NodePane").IsVisible != show)
+            SetPaneVisibility(Need<Control>("NodePane"), grid, 0, 1, PaletteWidth, show);
+        Need<ComboBox>("EngineBox").IsVisible = !compact && Need<Button>("RelayoutBtn").IsVisible;
+        Need<ComboBox>("DiagramThemeBox").IsVisible = !compact;
+    }
+    private double PaletteWidth => Need<ToggleButton>("OutlineToggle").IsChecked == true ? 216 : 80;
+    private void SetSourcePaneVisible(bool show)
+    {
+        Need<MenuItem>("MenuShowSource").IsChecked = show;
+        if (Need<ToggleButton>("SourceToggle").IsChecked != show)
+            Need<ToggleButton>("SourceToggle").IsChecked = show;
+        var pane = Need<Control>("SourcePane");
+        if (pane.IsVisible != show)
+            SetPaneVisibility(pane, (Grid)pane.Parent!, 6, 5, 360, show);
+    }
+    private void SetPaneVisibility(Control pane, Grid grid, int column, int splitterColumn, double width, bool show)
+    {
+        if (!show && pane.IsKeyboardFocusWithin) _canvas.Focus();
+        pane.IsVisible = show;
+        grid.ColumnDefinitions[column].Width = new GridLength(show ? width : 0);
+        grid.ColumnDefinitions[splitterColumn].Width = show ? GridLength.Auto : new GridLength(0);
+        foreach (var splitter in grid.Children.OfType<GridSplitter>())
+            if (Grid.GetColumn(splitter) == splitterColumn) splitter.IsVisible = show;
     }
 
     // ----------------------------------------------------------------- theme
@@ -442,7 +495,8 @@ public partial class MainWindow
         "Pan: hold space, press H, or right-drag · Zoom: Ctrl+scroll · " +
         "Double-click canvas to add, node or F2 to rename · " +
         "drag a green handle to connect · click a link to select it · " +
-        "Delete removes · drag background to marquee-select";
+        "Delete removes · Shift-click adds/removes objects · drag background to select · " +
+        "Layout menu aligns and distributes the selection";
 
     private void WireStylingToggle()
     {
@@ -510,7 +564,7 @@ public partial class MainWindow
 
         Need<TextBlock>("HintText").Text = on
             ? CanvasHint
-            : "Showing the plain diagram — this is what a stock mermaid renderer draws. Merpeeps styling is hidden, not removed.";
+            : "Showing the plain diagram — this is what a stock mermaid renderer draws. Merpie styling is hidden, not removed.";
 
         SyncStylingTooltip();
         UpdateStatus();
@@ -557,7 +611,7 @@ public partial class MainWindow
         {
             ToolTip.SetTip(toggle,
                 $"{Plain}.\n\nThe '{theme}' theme is colouring every node — none of "
-                + "them carry a Merpeeps colour of their own.");
+                + "them carry a Merpie colour of their own.");
             return;
         }
 
@@ -570,11 +624,11 @@ public partial class MainWindow
         var theirs = styled == 1 ? "node's own colour" : "nodes' own colours";
 
         ToolTip.SetTip(toggle, _canvas.ShowMerpeepsStyling
-            ? $"Merpeeps styling is ON, so it overrides the '{theme}' theme.\n\n"
+            ? $"Merpie styling is ON, so it overrides the '{theme}' theme.\n\n"
               + $"{styled} of {total} {owns} colour and keep it; the theme colours "
               + "the rest. Turn this off for the theme to apply everywhere.\n\n"
               + "This is what mermaid does too — an explicit style beats the theme."
-            : $"Merpeeps styling is OFF, so the '{theme}' theme colours every node.\n\n"
+            : $"Merpie styling is OFF, so the '{theme}' theme colours every node.\n\n"
               + $"Turn it back on to restore the {styled} {theirs}.");
     }
 
@@ -582,11 +636,6 @@ public partial class MainWindow
 
     private void WireNodeList()
     {
-        var collections = Need<ComboBox>("CollectionBox");
-        collections.ItemsSource = NodePalette.All;
-        collections.SelectedIndex = 0;
-        collections.SelectionChanged += (_, _) => RefreshPalette();
-
         var list = Need<ListBox>("PaletteList");
 
         // Double-click to place. A single click only selects, so browsing the
@@ -613,9 +662,20 @@ public partial class MainWindow
 
     private void RefreshPalette()
     {
-        var collections = Need<ComboBox>("CollectionBox");
-        if (collections.SelectedItem is not PaletteCollection chosen) return;
-        Need<ListBox>("PaletteList").ItemsSource = chosen.Items;
+        var kind = _canvas.Model?.Kind;
+        var isState = kind is "stateDiagram" or "stateDiagram-v2";
+        var isFlow = kind is "flowchart" or "graph" or "flowchart-elk";
+        var items = isState
+            ? NodePalette.State.Items.Where(i => i.Name != "Choice").ToArray()
+            : isFlow ? NodePalette.Flowchart.Items : Array.Empty<PaletteItem>();
+        Need<ListBox>("PaletteList").ItemsSource = items;
+        var family = MermaidDiagramCatalog.Families.FirstOrDefault(f => f.Dialects.Any(d => d.Directive == kind));
+        Need<TextBlock>("PaletteTitle").Text = isState ? "State diagram tools" : isFlow ? "Flowchart shapes" : family?.DisplayName ?? "Diagram items";
+        Need<TextBlock>("PaletteTypeHint").Text = isState
+            ? "States, start and end markers. File > New chooses a different diagram type."
+            : isFlow ? "Shapes for this flowchart. File > New chooses a different diagram type."
+            : _canvas.Model?.Temporal?.Family == TemporalFamily.Timeline ? "Time period adds a column; Event adds a detail beneath the selected period."
+            : "Click a picture to add an element. Select it on the canvas to edit.";
     }
 
     /// <summary>
@@ -677,11 +737,14 @@ public partial class MainWindow
 
             // Measured against the canvas, not the host, so the shape lands
             // under the pointer rather than offset by the host's border.
-            _canvas.AddFromPalette(item, _canvas.ScreenToWorld(e.GetPosition(_canvas)));
-
-            _dirty = true;
-            RefreshSource();
-            UpdateStatus();
+            try
+            {
+                _canvas.AddFromPalette(item, _canvas.ScreenToWorld(e.GetPosition(_canvas)));
+                _dirty = true;
+                RefreshSource();
+                UpdateStatus();
+            }
+            catch (ArgumentException error) { ShowInfo("Cannot add this shape", error.Message); }
             e.Handled = true;
         }
 
@@ -709,17 +772,22 @@ public partial class MainWindow
     private void AddFromPalette(PaletteItem item)
     {
         if (_canvas.Model is null) return;
-        _canvas.AddFromPalette(item);
-        _dirty = true;
-        RefreshSource();
-        UpdateStatus();
-        _canvas.Focus();
+        try
+        {
+            _canvas.AddFromPalette(item);
+            _dirty = true;
+            RefreshSource();
+            UpdateStatus();
+            _canvas.Focus();
+        }
+        catch (ArgumentException error) { ShowInfo("Cannot add this shape", error.Message); }
     }
 
     // ------------------------------------------------------------- dialogues
 
     private async Task SaveAs()
     {
+        if (!CanSaveCurrentDiagram()) return;
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Save diagram as",
@@ -738,8 +806,8 @@ public partial class MainWindow
     /// </summary>
     private async Task ExportPlain()
     {
-        var model = _canvas.Model;
-        if (model is null) return;
+        if (!CanSaveCurrentDiagram()) return;
+        if (_capabilities is null) return;
 
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
@@ -750,7 +818,7 @@ public partial class MainWindow
         });
         if (file is null) return;
 
-        var plain = MerpeepsDoc.Serialise(Render(model), null);
+        var plain = MerpeepsDoc.Serialise(CurrentSource, null);
         await File.WriteAllTextAsync(file.Path.LocalPath, plain);
         Need<TextBlock>("StatusText").Text =
             $"exported {Path.GetFileName(file.Path.LocalPath)} (no metadata)";
@@ -769,8 +837,16 @@ public partial class MainWindow
     /// </remarks>
     private async Task ExportSvg()
     {
+        if (!CanSaveCurrentDiagram()) return;
         var model = _canvas.Model;
         if (model is null) return;
+        string svg;
+        try { svg = SvgExporter.ToSvg(model, evaluationContext: model.Gantt is null ? null : _canvas.GanttContext); }
+        catch (NotSupportedException error)
+        {
+            ShowInfo("SVG export unavailable", error.Message + "\n\nNothing was written. The source and diagram remain unchanged.");
+            return;
+        }
 
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
@@ -780,7 +856,7 @@ public partial class MainWindow
         });
         if (file is null) return;
 
-        await File.WriteAllTextAsync(file.Path.LocalPath, SvgExporter.ToSvg(model));
+        await File.WriteAllTextAsync(file.Path.LocalPath, svg);
         Need<TextBlock>("StatusText").Text =
             $"exported {Path.GetFileName(file.Path.LocalPath)}";
     }
@@ -808,7 +884,8 @@ public partial class MainWindow
     /// </remarks>
     private async Task ExportBaked()
     {
-        if (_canvas.Model is null) return;
+        if (!CanSaveCurrentDiagram()) return;
+        if (_capabilities is null) return;
 
         var result = MermaidBake.Bake(CurrentSource);
 
@@ -820,10 +897,9 @@ public partial class MainWindow
         if (result.UnsupportedKind is { } kind)
         {
             ShowInfo("Export with styling baked in",
-                $"A '{kind}' diagram has no `style` statement in its grammar, so there " +
-                "is nothing to bake into — mermaid would reject the file.\n\n" +
-                "Nothing was written. 'Export as SVG' keeps the styling as a picture, " +
-                "and the diagram still renders correctly as it is.");
+                (result.Diagnostic ?? $"This build cannot bake '{kind}'.") +
+                "\n\nNothing was written. Use a Mermaid renderer to preview the source; " +
+                "native SVG export is unavailable for unsupported families.");
             return;
         }
 
@@ -857,6 +933,12 @@ public partial class MainWindow
     internal async Task<string?> WriteBaked(string path)
     {
         var result = MermaidBake.Bake(CurrentSource);
+        if (result.UnsupportedKind is not null)
+        {
+            var diagnostic = "Nothing was written. " + result.Diagnostic;
+            Need<TextBlock>("StatusText").Text = diagnostic;
+            return diagnostic;
+        }
         await File.WriteAllTextAsync(path, result.Output);
 
         var name = Path.GetFileName(path);
@@ -955,16 +1037,43 @@ public partial class MainWindow
         Drag background       Marquee-select
         """);
 
-    private void ShowAbout() => ShowInfo("About Merpeeps", """
-        Merpeeps — layout and styling for Mermaid diagrams.
+    private void ShowAbout()
+    {
+        var close = new Button { Name = "CloseAbout", Content = "Close", HorizontalAlignment = HorizontalAlignment.Right };
+        AutomationProperties.SetName(close, "Close About Merpie");
+        var window = new Window
+        {
+            Title = "About " + ProductBrand.Name,
+            Icon = ProductBrand.WindowIcon,
+            Width = 440, MaxHeight = 620, SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, CanResize = false,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(24), Spacing = 14,
+                Children =
+                {
+                    new MerpieMascot { Name = "AboutMascot", Width = 144, Height = 144, HorizontalAlignment = HorizontalAlignment.Center },
+                    new TextBlock { Text = ProductBrand.Name, FontSize = 24, FontWeight = FontWeight.SemiBold, Classes = { "display" }, HorizontalAlignment = HorizontalAlignment.Center },
+                    new SelectableTextBlock
+                    {
+                        FontSize = 13, TextWrapping = TextWrapping.Wrap,
+                        Text = """
+                            A native visual editor for Mermaid diagrams.
 
-        Positions, styling and icons are stored inside the diagram file under
-        an 'x-merpeeps' frontmatter key. Mermaid reads only displayMode, title
-        and config, so the block is discarded before its parser ever runs — the
-        same file renders identically in any stock mermaid viewer.
+                            Positions, styling and icons stay in your .mmd file. Existing x-merpeeps metadata, merpeeps CLI/MCP tools and Merpeeps library/package IDs remain compatible.
 
-        Not affiliated with Mermaid Chart Inc. or the Mermaid project.
-        """);
+                            The sea-magpie combines the magpie's detailed head and feather streaks with a broad split mermaid tail.
+
+                            Not affiliated with Mermaid Chart Inc. or the Mermaid project.
+                            """,
+                    },
+                    close,
+                },
+            },
+        };
+        close.Click += (_, _) => window.Close();
+        _ = window.ShowDialog(this);
+    }
 
     /// <summary>Show a message in a modal window.</summary>
     /// <remarks>
@@ -989,6 +1098,7 @@ public partial class MainWindow
         var window = new Window
         {
             Title = title,
+            Icon = ProductBrand.WindowIcon,
             Width = 460,
             MaxHeight = 620,
             SizeToContent = SizeToContent.Height,

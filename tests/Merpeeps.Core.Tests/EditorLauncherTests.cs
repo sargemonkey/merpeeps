@@ -180,14 +180,48 @@ public class EditorLauncherTests
 
         var candidates = EditorLauncher.Candidates(here);
 
-        Assert.Equal([Path.Combine(here, Exe)], candidates);
+        Assert.Equal([Path.Combine(here, Exe), Path.Combine(here, EditorLauncher.LegacyExecutableName)], candidates);
     }
 
     [Fact]
     public void Names_the_platforms_executable()
     {
         Assert.Equal(
-            OperatingSystem.IsWindows() ? "Merpeeps.App.exe" : "Merpeeps.App",
+            OperatingSystem.IsWindows() ? "Merpie.App.exe" : "Merpie.App",
             EditorLauncher.ExecutableName);
+    }
+
+    [Fact]
+    public void Prefers_Merpie_and_can_still_open_legacy_installs()
+    {
+        var here = Path.Combine("C:", "tools", "merpeeps");
+        var modern = Path.Combine(here, Exe);
+        var legacy = Path.Combine(here, EditorLauncher.LegacyExecutableName);
+        Assert.Equal(modern, EditorLauncher.Locate(here, null, Only(modern, legacy)).Path);
+        Assert.Equal(legacy, EditorLauncher.Locate(here, null, Only(legacy)).Path);
+        Assert.Equal(legacy, EditorLauncher.Locate(here, legacy, Only(modern, legacy)).Path);
+        Assert.Equal(legacy, EditorLauncher.Locate("", here, Only(legacy)).Path);
+    }
+
+    [Fact]
+    public void Retains_legacy_sibling_build_and_finds_the_branded_portable_package()
+    {
+        var caller = Path.Combine("C:", "repo", "src", "Merpeeps.Cli", "bin", "Release", "net10.0");
+        var oldBuild = Path.Combine("C:", "repo", "src", "Merpeeps.App", "bin", "Release", "net10.0", EditorLauncher.LegacyExecutableName);
+        Assert.Equal(oldBuild, EditorLauncher.Locate(caller, null, Only(oldBuild)).Path);
+        var package = Path.Combine("C:", "portable", "merpie-win-x64");
+        var editor = Path.Combine(package, "app", Exe);
+        Assert.Equal(editor, EditorLauncher.Locate(Path.Combine(package, "mcp"), null, Only(editor)).Path);
+    }
+
+    [Fact]
+    public void Finds_the_mac_application_bundle_without_changing_the_override_variable()
+    {
+        var package = Path.Combine("C:", "portable", "merpie-osx-arm64");
+        var bundle = Path.Combine(package, "Merpie.app");
+        var editor = Path.Combine(bundle, "Contents", "MacOS", Exe);
+        Assert.Equal(editor, EditorLauncher.Locate("", bundle, Only(editor)).Path);
+        Assert.Equal(editor, EditorLauncher.Locate(Path.Combine(package, "mcp"), null, Only(editor)).Path);
+        Assert.Equal("MERPEEPS_APP", EditorLauncher.OverrideVariable);
     }
 }

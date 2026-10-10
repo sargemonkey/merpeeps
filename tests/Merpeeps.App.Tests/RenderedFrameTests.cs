@@ -59,7 +59,7 @@ public class RenderedFrameTests
     /// Cropping to the canvas keeps chrome, menus and the source pane out of
     /// the counts, so a change to the toolbar cannot move these numbers.
     /// </summary>
-    private static uint[] CanvasPixels(MainWindow window, EditorCanvas canvas, out int width)
+    internal static uint[] CanvasPixels(MainWindow window, EditorCanvas canvas, out int width)
     {
         Dispatcher.UIThread.RunJobs();
         using var frame = window.CaptureRenderedFrame()

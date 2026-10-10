@@ -1,3 +1,5 @@
+import type { RenderedGraphGeometry } from './rendered-geometry.js';
+
 /** A node's stored position, in diagram coordinates. */
 export interface Position {
   x: number;
@@ -25,6 +27,7 @@ export interface MerpeepsBlock {
   layout?: {
     nodes?: Record<string, Position>;
     engine?: string;
+    rendered?: RenderedGraphGeometry | null;
     [key: string]: unknown;
   };
   style?: {

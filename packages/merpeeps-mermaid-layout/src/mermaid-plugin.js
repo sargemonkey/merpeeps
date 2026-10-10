@@ -19,7 +19,8 @@
 // normally.
 
 import * as yaml from 'js-yaml';
-import { getPositions, getStyles, split } from './index.js';
+import { getPositions, getStyles, split, parse } from './index.js';
+import { replayRenderedGeometry } from './rendered-geometry.js';
 
 /** The name this algorithm registers under (`config.layout`). */
 export const LAYOUT_NAME = 'merpeeps';
@@ -55,6 +56,12 @@ export function registerMerpeepsLayout(mermaid) {
 export async function renderWithLayout(mermaid, id, text, container) {
   const positions = getPositions(text);
   const styles = getStyles(text);
+  const rendered = parse(text)?.layout?.rendered;
+  if (rendered) {
+    const result = await mermaid.render(id, text, container);
+    const styled = styleSvg(result.svg, styles);
+    return { ...result, svg: replayRenderedGeometry(styled, rendered, positions, id) };
+  }
 
   const hasPositions = Object.keys(positions).length > 0;
   const hasStyles = Object.keys(styles).length > 0;

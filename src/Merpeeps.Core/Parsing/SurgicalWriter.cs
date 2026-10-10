@@ -22,6 +22,32 @@ public static class SurgicalWriter
     public static string Apply(string source, DiagramModel edited)
     {
         var adapter = DiagramAdapters.For(source);
+        if (adapter is ClassDiagramAdapter classes) return classes.Apply(source, edited);
+        if (adapter is EntityDiagramAdapter entities) return entities.Apply(source, edited);
+        if (adapter is SequenceDiagramAdapter sequence) return sequence.Apply(source, edited);
+        if (adapter is ChartDiagramAdapter chart) return chart.Apply(source, edited);
+        if (adapter is TemporalDiagramAdapter temporal) return temporal.Apply(source, edited);
+        if (adapter is OutlineDiagramAdapter outline) return outline.Apply(source, edited);
+        if (adapter is PacketDiagramAdapter packet) return packet.Apply(source, edited);
+        if (adapter is KanbanDiagramAdapter board) return board.Apply(source, edited);
+        if (adapter is RequirementDiagramAdapter requirements) return requirements.Apply(source, edited);
+        if (adapter is GitGraphAdapter git) return git.Apply(source, edited);
+        if (adapter is SankeyDiagramAdapter flow) return flow.Apply(source, edited);
+        if (adapter is TreemapDiagramAdapter tree) return tree.Apply(source, edited);
+        if (adapter is BlockDiagramAdapter block) return block.Apply(source, edited);
+        if (adapter is ArchitectureDiagramAdapter architecture) return architecture.Apply(source, edited);
+        if (adapter is C4DiagramAdapter c4) return c4.Apply(source, edited);
+        if (adapter is GanttDiagramAdapter gantt) return gantt.Apply(source, edited);
+        if (adapter is WardleyDiagramAdapter wardley) return wardley.Apply(source, edited);
+        if (adapter is IshikawaDiagramAdapter ishikawa) return ishikawa.Apply(source, edited);
+        if (adapter is CynefinDiagramAdapter cynefin) return cynefin.Apply(source, edited);
+        if (adapter is VennDiagramAdapter venn) return venn.Apply(source, edited);
+        if (adapter is RailroadDiagramAdapter railroad) return railroad.Apply(source, edited);
+        if (adapter is SwimlaneDiagramAdapter lanes) return lanes.Apply(source, edited);
+        if (adapter is UseCaseDiagramAdapter useCase) return useCase.Apply(source, edited);
+        if (adapter is AgentFlowDiagramAdapter agent) return agent.Apply(source, edited);
+        if (adapter is EventModelingAdapter events) return events.Apply(source, edited);
+        if (adapter is ZenDiagramAdapter zen) return zen.Apply(source, edited);
         var original = adapter.Parse(source);
         var doc = MerpeepsDoc.Split(source);
 
@@ -200,5 +226,3 @@ public static class SurgicalWriter
         _ => ("[", "]"),
     };
 }
-
-

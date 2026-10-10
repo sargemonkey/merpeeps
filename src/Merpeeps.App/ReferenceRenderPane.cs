@@ -2,6 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Merpeeps.Render;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Merpeeps.App;
 
@@ -50,7 +52,7 @@ public sealed class ReferenceRenderPane : UserControl
     /// </summary>
     public static readonly (string Label, RenderAssets.Mode Mode, string? Layout)[] Choices =
     [
-        ("mermaid + Merpeeps", RenderAssets.Mode.WithMerpeeps, null),
+        ("mermaid + Merpie", RenderAssets.Mode.WithMerpeeps, null),
         ("stock mermaid (dagre)", RenderAssets.Mode.Stock, "dagre"),
     ];
 
@@ -185,6 +187,8 @@ public sealed class ReferenceRenderPane : UserControl
     /// no longer recomposes megabytes.
     /// </summary>
     private static readonly Dictionary<(RenderAssets.Mode, string?, bool), string> ShellCache = new();
+    private static readonly string ShellDirectory = Path.Combine(
+        Path.GetTempPath(), "merpeeps-preview", Guid.NewGuid().ToString("N"));
 
     /// <summary>
     /// Write the shell to a temporary file and return its URI.
@@ -206,13 +210,11 @@ public sealed class ReferenceRenderPane : UserControl
 
     internal static Uri ShellUri(RenderAssets.Mode mode, string? layout, bool dark)
     {
-        var dir = Path.Combine(Path.GetTempPath(), "merpeeps-preview");
+        var dir = ShellDirectory;
         Directory.CreateDirectory(dir);
 
         // One file per mode and theme, so switching does not rewrite megabytes.
         var tag = layout is null ? "default" : layout.Replace('.', '-');
-        var file = Path.Combine(dir, $"shell-{mode}-{tag}-{(dark ? "dark" : "light")}.html");
-
         lock (ShellCache)
         {
             if (!ShellCache.TryGetValue((mode, layout, dark), out var html))
@@ -221,12 +223,16 @@ public sealed class ReferenceRenderPane : UserControl
                 ShellCache[(mode, layout, dark)] = html;
             }
 
-            // Rewrite only when it would differ; the content is deterministic.
-            if (!File.Exists(file) || new FileInfo(file).Length != html.Length)
-                File.WriteAllText(file, html);
+            var bytes = Encoding.UTF8.GetBytes(html);
+            var fingerprint = Convert.ToHexString(SHA256.HashData(bytes));
+            var file = Path.Combine(dir, $"shell-{mode}-{tag}-{(dark ? "dark" : "light")}-{fingerprint}.html");
+            if (!File.Exists(file))
+            {
+                using var stream = new FileStream(file, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                stream.Write(bytes);
+            }
+            return new Uri(file);
         }
-
-        return new Uri(file);
     }
 
     private void Fail(string message)

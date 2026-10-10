@@ -22,7 +22,7 @@ public sealed class StateAdapter : IDiagramAdapter
     public const string EndId = "__end";
 
     private static readonly Regex Header = new(
-        @"^\s*(?<kind>stateDiagram(?:-v2)?)\s*$",
+        @"^\s*(?<kind>stateDiagram(?:-v2)?)\s*;?\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex DirectionLine = new(
@@ -54,8 +54,7 @@ public sealed class StateAdapter : IDiagramAdapter
     public string Kind => "stateDiagram-v2";
 
     public bool CanParse(string body) =>
-        DiagramAdapters.FirstKeyword(body)
-            .StartsWith("stateDiagram", StringComparison.OrdinalIgnoreCase);
+        DiagramAdapters.FirstKeyword(body).ToLowerInvariant() is "statediagram" or "statediagram-v2";
 
     public DiagramModel Parse(string source)
     {
@@ -66,11 +65,17 @@ public sealed class StateAdapter : IDiagramAdapter
 
         var composites = new Stack<DiagramSubgraph>();
         var headerSeen = false;
+        var inDirective = false;
         var ordinals = new Dictionary<string, int>();
 
         for (var i = 0; i < lines.Length; i++)
         {
             var raw = lines[i];
+            if (DiagramAdapters.IsCommentLine(raw.Trim(), ref inDirective))
+            {
+                model.Passthrough[i] = raw;
+                continue;
+            }
             var line = StripComment(raw).Trim();
             if (line.Length == 0) { model.Passthrough[i] = raw; continue; }
 
@@ -99,7 +104,11 @@ public sealed class StateAdapter : IDiagramAdapter
             var comp = CompositeOpen.Match(line);
             if (comp.Success)
             {
-                var sg = new DiagramSubgraph { Id = comp.Groups["id"].Value };
+                var sg = new DiagramSubgraph
+                {
+                    Id = comp.Groups["id"].Value,
+                    ParentId = composites.TryPeek(out var parent) ? parent.Id : null,
+                };
                 model.Subgraphs.Add(sg);
                 composites.Push(sg);
                 continue;

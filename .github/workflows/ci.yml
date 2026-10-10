@@ -35,6 +35,11 @@ jobs:
           dotnet test tests/Merpeeps.Core.Tests --no-build -c Release
           --logger "trx;LogFileName=inner-${{ matrix.os }}.trx"
 
+      - name: Shared scene contract
+        run: >
+          dotnet test tests/Merpeeps.Scene.Tests --no-build -c Release
+          --logger "trx;LogFileName=scenes-${{ matrix.os }}.trx"
+
       # Headless UI tests: the real window, real XAML and real handlers with no
       # display. The suite renders with real Skia and asserts on captured pixels,
       # so the bugs it covers — icons still drawn with styling off, unreadable
@@ -77,6 +82,8 @@ jobs:
           [ -f "$cli.exe" ] && cli="$cli.exe"
           node oracle/surface-parity-test.mjs "$cli" \
             src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
+          node oracle/capability-test.mjs "$cli" \
+            src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -97,6 +104,8 @@ jobs:
             rid: win-x64
           - os: macos-latest
             rid: osx-arm64
+          - os: macos-15-intel
+            rid: osx-x64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -109,17 +118,33 @@ jobs:
       - name: Publish the editor for ${{ matrix.rid }}
         run: >
           dotnet publish src/Merpeeps.App -c Release -r ${{ matrix.rid }}
-          --self-contained false -o out/app
+          --self-contained true -o out/app
 
       - name: Publish the MCP server for ${{ matrix.rid }}
         run: >
           dotnet publish src/Merpeeps.Mcp -c Release -r ${{ matrix.rid }}
-          --self-contained false -o out/mcp
+          --self-contained true -o out/mcp
+
+      - name: Package Merpie desktop branding for ${{ matrix.rid }}
+        shell: pwsh
+        run: |
+          $info = ./scripts/get-release-info.ps1
+          ./scripts/package-desktop.ps1 -AppPublishPath out/app -McpPublishPath out/mcp -RuntimeIdentifier '${{ matrix.rid }}' -OutputDirectory artifacts/desktop -Version $info.desktop -SelfContained
+
+      - name: Verify Merpie release files and platform metadata
+        shell: pwsh
+        run: |
+          $info = ./scripts/get-release-info.ps1
+          $archive = Get-ChildItem artifacts/desktop -File | Where-Object { $_.Name -match '\.(zip|tar\.gz)$' } | Select-Object -First 1
+          ./scripts/test-desktop-package.ps1 -PackagePath "artifacts/desktop/merpie-$($info.desktop)-${{ matrix.rid }}" -ArchivePath $archive.FullName
 
       - uses: actions/upload-artifact@v4
         with:
-          name: merpeeps-${{ matrix.rid }}
-          path: out/
+          name: merpie-${{ matrix.rid }}
+          path: |
+            artifacts/desktop/*.zip
+            artifacts/desktop/*.tar.gz
+            artifacts/desktop/*.sha256
 
   packages:
     name: Published packages
@@ -145,7 +170,10 @@ jobs:
         run: node oracle/package-consumer-test.mjs
 
       - name: NuGet package builds
-        run: dotnet pack src/Merpeeps.Core -c Release -o artifacts
+        run: |
+          dotnet pack src/Merpeeps.Core -c Release -o artifacts
+          dotnet pack src/Merpeeps.Scene -c Release -o artifacts
+          dotnet pack src/Merpeeps.Render -c Release -o artifacts
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -180,13 +208,26 @@ jobs:
         working-directory: .
         run: dotnet build src/Merpeeps.Cli -c Release
 
+      - name: Offline source grammar validation with the bundled runtime
+        env:
+          MERPEEPS_ORACLE_CHANNEL: bundled
+        run: |
+          dotnet run --file emit-validation-shell.cs -- "$RUNNER_TEMP/mermaid-validation.html"
+          node validation-page-test.mjs "$RUNNER_TEMP/mermaid-validation.html"
+          dotnet run --file emit-class-cases.cs -- "$RUNNER_TEMP/class-authored.json"
+          node class-authoring-test.mjs "$RUNNER_TEMP/mermaid-validation.html" "$RUNNER_TEMP/class-authored.json"
+          dotnet run --file emit-er-cases.cs -- "$RUNNER_TEMP/er-authored.json"
+          node er-authoring-test.mjs "$RUNNER_TEMP/mermaid-validation.html" "$RUNNER_TEMP/er-authored.json"
+          dotnet run --file emit-sequence-cases.cs -- "$RUNNER_TEMP/sequence-authored.json"
+          node sequence-authoring-test.mjs "$RUNNER_TEMP/mermaid-validation.html" "$RUNNER_TEMP/sequence-authored.json"
+
       # The oracle imports the installed `merpeeps-mermaid-layout` package, not a copy of it,
       # so this proves the artefact we publish is the one verified against real
       # mermaid.js rather than something that merely resembles it.
       - name: Conformance against stock mermaid
         env:
           MERPEEPS_ORACLE_CHANNEL: bundled
-          MERPEEPS_MIN_RENDERABLE: '30'
+          MERPEEPS_MIN_RENDERABLE: '32'
         run: node run-oracle.mjs | tee oracle-report.json
 
       # A suite that cannot go red is worthless: prove it detects real breakage.
@@ -322,4 +363,3 @@ jobs:
         with:
           name: merpeeps-cli-${{ matrix.rid }}
           path: src/Merpeeps.Cli/bin/Release/net10.0/${{ matrix.rid }}/publish/${{ matrix.exe }}
-

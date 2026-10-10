@@ -38,7 +38,7 @@ public static class EditorLayouts
     /// The engines, in the order the dropdown offers them.
     /// </summary>
     /// <remarks>
-    /// Labels keep the <c>Merpeeps:</c> prefix even though nothing else appears in
+    /// Labels keep the product prefix even though nothing else appears in
     /// the list any more. It says whose arrangement this is, which matters
     /// precisely because a stock renderer without the plugin will draw the
     /// diagram its own way.
@@ -46,7 +46,7 @@ public static class EditorLayouts
     public static readonly IReadOnlyList<Choice> All =
     [
         .. LayoutEngines.Available.Select(e =>
-            new Choice($"Merpeeps: {e.Name.ToLowerInvariant()}", e.Id, e.Description)),
+            new Choice($"{ProductBrand.Name}: {e.Name.ToLowerInvariant()}", e.Id, e.Description)),
     ];
 
     /// <summary>

@@ -39,7 +39,8 @@ public static class MermaidBake
     /// </remarks>
     private static readonly string[] SupportsStyle =
     {
-        "flowchart", "graph", "statediagram", "classdiagram", "erdiagram", "block",
+        "flowchart", "flowchart-elk", "graph", "statediagram", "statediagram-v2",
+        "classdiagram", "classdiagram-v2", "erdiagram", "block", "block-beta",
     };
 
     /// <summary>What a bake could and could not carry into plain mermaid.</summary>
@@ -57,8 +58,8 @@ public static class MermaidBake
     /// placing a node, so a baked file is laid out by mermaid's own algorithm.
     /// </param>
     /// <param name="UnsupportedKind">
-    /// Set when the diagram type rejects <c>style</c> entirely, in which case
-    /// nothing was baked and the body is unchanged.
+    /// Set when the grammar rejects <c>style</c> or this build has no native
+    /// adapter for the family. Nothing was baked and the body is unchanged.
     /// </param>
     public readonly record struct Result(
         string Output,
@@ -67,6 +68,9 @@ public static class MermaidBake
         IReadOnlyList<string> DroppedPositions,
         string? UnsupportedKind)
     {
+        /// <summary>Why this build could not bake the diagram, when applicable.</summary>
+        public string? Diagnostic { get; init; }
+
         /// <summary>True when something the document carried could not be expressed.</summary>
         public bool Lossy =>
             DroppedIcons.Count > 0 || DroppedPositions.Count > 0 || UnsupportedKind is not null;
@@ -78,9 +82,35 @@ public static class MermaidBake
     /// </summary>
     public static Result Bake(string source)
     {
-        var model = MerpeepsDocument.Load(source);
         var body = MerpeepsDoc.BodyOf(source);
+        var kind = OpeningKeyword(body);
+        var capabilities = MerpeepsDocument.GetCapabilities(source);
+        if (!AcceptsStyle(kind) || !capabilities.CanEdit)
+        {
+            // Report metadata being removed without guessing which nodes an
+            // unsupported grammar might contain.
+            var metadata = MerpeepsDoc.Parse(source) as Dictionary<string, object?>;
+            var style = metadata?.GetValueOrDefault("style") as Dictionary<string, object?>;
+            var styleNodes = style?.GetValueOrDefault("nodes") as Dictionary<string, object?>;
+            var layout = metadata?.GetValueOrDefault("layout") as Dictionary<string, object?>;
+            var layoutNodes = layout?.GetValueOrDefault("nodes") as Dictionary<string, object?>;
+            var droppedIcons = (styleNodes ?? []).Where(kv =>
+                kv.Value is Dictionary<string, object?> node &&
+                node.GetValueOrDefault("icon") is string { Length: > 0 })
+                .Select(kv => kv.Key).ToArray();
+            var droppedPositions = (layoutNodes ?? []).Where(kv =>
+                kv.Value is Dictionary<string, object?> node &&
+                node.ContainsKey("x") && node.ContainsKey("y"))
+                .Select(kv => kv.Key).ToArray();
+            return new Result(Ensure(body), [], droppedIcons, droppedPositions, kind)
+            {
+                Diagnostic = AcceptsStyle(kind)
+                    ? $"This build cannot bake '{kind}' because it has no native adapter. The plain diagram is unchanged."
+                    : $"'{kind}' has no `style` statement in its grammar, so nothing could be baked. The plain diagram is unchanged.",
+            };
+        }
 
+        var model = MerpeepsDocument.Load(source);
         var icons = model.Nodes
             .Where(n => !string.IsNullOrEmpty(n.Icon))
             .Select(n => n.Id)
@@ -90,19 +120,6 @@ public static class MermaidBake
             .Where(n => n.HasExplicitPosition)
             .Select(n => n.Id)
             .ToArray();
-
-        // Read the kind from the source rather than from the model. The adapter
-        // registry falls back to flowchart for anything it does not recognise,
-        // so model.Kind reports "flowchart" for a sequence diagram — and trusting
-        // it would inject `style` into a grammar that rejects it, turning a
-        // working file into a parse error. That is the precise failure this
-        // guard exists to prevent, so it must not consult a guessing party.
-        var kind = OpeningKeyword(body);
-
-        if (!AcceptsStyle(kind))
-        {
-            return new Result(Ensure(body), [], icons, positions, kind);
-        }
 
         var styled = new List<string>();
         var sb = new StringBuilder(Ensure(body));
@@ -119,11 +136,8 @@ public static class MermaidBake
     }
 
     /// <summary>Does this diagram family's grammar accept a <c>style</c> statement?</summary>
-    public static bool AcceptsStyle(string kind)
-    {
-        var k = kind.Replace("-", "").ToLowerInvariant();
-        return SupportsStyle.Any(s => k.StartsWith(s, StringComparison.Ordinal));
-    }
+    public static bool AcceptsStyle(string kind) =>
+        SupportsStyle.Contains(kind, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// The diagram's opening keyword, taken straight from the source.
@@ -132,19 +146,7 @@ public static class MermaidBake
     /// mermaid's grammar will see, not what our adapters managed to make of
     /// it.</para>
     /// </summary>
-    public static string OpeningKeyword(string body)
-    {
-        foreach (var raw in body.Replace("\r\n", "\n").Split('\n'))
-        {
-            var line = raw.Trim();
-            if (line.Length == 0 || line.StartsWith("%%", StringComparison.Ordinal)) continue;
-
-            // "flowchart TD" -> "flowchart"; "architecture-beta" stays whole.
-            var space = line.IndexOfAny([' ', '\t']);
-            return space > 0 ? line[..space] : line;
-        }
-        return "";
-    }
+    public static string OpeningKeyword(string body) => Parsing.DiagramAdapters.FirstKeyword(body);
 
     /// <summary>
     /// The declaration body for one node, or null when it has nothing paintable.

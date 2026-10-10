@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Merpie
+Comment=Native visual editor for Mermaid diagrams
+Exec=merpie %F
+Icon=merpie
+Terminal=false
+Categories=Graphics;Development;
+StartupNotify=true

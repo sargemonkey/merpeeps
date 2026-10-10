@@ -51,6 +51,8 @@ public class EdgeSelectionTests
         var nodePanel = window.FindControl<StackPanel>("NodeProperties")!;
 
         Assert.False(edgePanel.IsVisible);
+        Assert.False(nodePanel.IsVisible);
+        canvas.SelectByIds(["a"]);
         Assert.True(nodePanel.IsVisible);
 
         canvas.SelectEdge(Edge(canvas, "a", "b"));
@@ -62,6 +64,8 @@ public class EdgeSelectionTests
 
         canvas.SelectEdge(null);
         Assert.False(edgePanel.IsVisible);
+        Assert.False(nodePanel.IsVisible);
+        canvas.SelectByIds(["b"]);
         Assert.True(nodePanel.IsVisible);
     }
 

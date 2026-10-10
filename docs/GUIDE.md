@@ -1,4 +1,4 @@
-# Merpeeps user guide
+# Merpie user guide
 
 How to actually use it. For *why* it works the way it does, see the
 [README](../README.md); for the file format, [SPEC.md](../SPEC.md).
@@ -8,13 +8,19 @@ How to actually use it. For *why* it works the way it does, see the
 ## What this is, in three sentences
 
 Mermaid has no coordinate system — you describe a graph and the renderer decides
-where the boxes go. Merpeeps lets you place them yourself and stores those
+where the boxes go. Merpie lets you place them yourself and stores those
 positions, plus colours and icons, inside the same `.mmd` file under a key stock
 renderers ignore. So the file still renders correctly on GitHub with nothing
 installed; it just renders *your* arrangement anywhere Merpeeps's layout plugin is
 present.
 
-![The Merpeeps editor](editor.png)
+Merpie is the desktop product name. Its shared format/libraries and existing
+CLI/MCP commands retain their Merpeeps IDs: `x-merpeeps` metadata, the `merpeeps`
+CLI, `MERPEEPS_APP`, and `Merpeeps.Core/Scene/Render` packages. Existing `.mmd`
+files do not need migration. The GUI executable is `Merpie.App`, with `.exe` on
+Windows; the source project remains `src/Merpeeps.App`.
+
+![Merpie's diagram gallery](merpie-gallery.png)
 
 ---
 
@@ -28,7 +34,16 @@ cd merpeeps
 dotnet run --project src/Merpeeps.App -- docs/styled-sample.mmd
 ```
 
-That opens the sample shipped with the repo. Omitting the filename starts empty.
+That opens the sample shipped with the repo. Omitting the filename opens the
+visual **Create a diagram** gallery instead; the sample is never inserted
+automatically.
+
+Click an available Flowchart, State, Class, ER or Sequence preview to create an empty
+document of that type. **Open existing diagram…** opens your own file.
+**File > New diagram…** returns to the gallery; **Back to diagram** keeps the
+current document, selection and unapplied inspector work. Replacing unsaved
+work requires an explicit discard choice. **Other syntax…** below each tile
+provides alternate directives without making them look like separate products.
 
 To build a standalone binary instead:
 
@@ -38,6 +53,44 @@ dotnet publish src/Merpeeps.App -c Release -r win-x64    # or linux-x64, osx-arm
 
 CI already builds these for Windows, Linux and macOS on every push, so if you
 would rather not build locally, grab the artefact from the latest green run.
+
+### Merpie desktop packaging
+
+The app uses the locked sea-magpie artwork: the original head/eye and wing streaks
+with the broad split mermaid tail. The same app icon appears in the executable,
+window, workspace, Linux desktop entry and macOS application bundle. The gallery
+and About window use the transparent mascot; dark mode chooses the thin-keyline
+variant without changing diagram contents.
+
+Publish, then package the existing output (PowerShell 7.3+ on any CI platform):
+
+```powershell
+dotnet publish src\Merpeeps.App -c Release -r win-x64 --self-contained true -o out\app
+.\scripts\package-desktop.ps1 -AppPublishPath out\app -RuntimeIdentifier win-x64 -OutputDirectory artifacts\desktop -Version 0.1.0-preview.1 -SelfContained
+.\scripts\test-desktop-package.ps1 -PackagePath artifacts\desktop\merpie-0.1.0-preview.1-win-x64 -ArchivePath artifacts\desktop\merpie-0.1.0-preview.1-win-x64.zip
+```
+
+Use `linux-x64`, `osx-x64` or `osx-arm64` for the other CI targets. Self-contained
+packages bundle .NET but still require native OS libraries. The optional
+`-McpPublishPath` includes the published, unchanged `Merpeeps.Mcp` server.
+Windows is a ZIP with `app\Merpie.App.exe`; Linux is a tarball with the `merpie`
+launcher, `Merpie.desktop` and `icons\merpie.png`; macOS is a tarball containing
+`Merpie.app` with its executable, Info.plist and ICNS icon. Packaging sets
+executable mode bits in tar archives even when cross-publishing from Windows.
+All packages include a hashed release
+manifest and portable-use instructions.
+
+Packaging never changes an installed app, PATH, shortcuts or file associations.
+Existing `MERPEEPS_APP` overrides still work, including an explicit legacy
+`Merpeeps.App` executable; a directory now prefers `Merpie.App` when both exist.
+Portable MCP packages resolve their sibling `app` or macOS bundle automatically.
+Unsigned packages are not Windows signed or macOS notarized; native platform
+launch acceptance remains a separate deployment check.
+
+The pale rounded app-icon backplate is intentional; only its exterior is
+transparent. The mascot is fully background-transparent. Approved vector masters
+and raster/platform variants are in `src\Merpeeps.App\Assets\Brand` and copied
+into release output. Do not recolor the locked artwork with diagram colors.
 
 **Optional.** The editor has a "Real mermaid" pane that renders your diagram with
 the genuine upstream renderer beside the canvas. That needs a platform web engine
@@ -56,7 +109,32 @@ Open the sample and try these in order. Nothing here is destructive — `Ctrl+Z`
 undoes all of it.
 
 **Move a box.** Drag it. The position is recorded the moment you let go, which
-is the entire point of the project.
+is the entire point of the project. Hold `Alt` to bypass grid snapping.
+Press `Escape` before releasing to cancel; Undo restores both the old coordinates
+and whether the node was automatically or manually positioned.
+
+**Move a group.** In Flowchart, State, Class and ER diagrams, drag a group's
+header or border to move its members together, including nested groups and
+attached Class notes/interfaces. Empty group frames can also be moved. A group
+move is one Undo step, and Escape cancels it. Nodes and relationships inside a
+group remain independently selectable.
+
+**Select and arrange several objects.** `Shift`-click nodes or group headers to
+add/remove them. Drag empty canvas to select nodes; fully enclosing a group
+selects that container instead of also selecting its children. Hold `Shift`
+while dragging a selection box to add to your existing selection. Drag any
+selected object to move the whole set. `Ctrl+A` retains its existing behavior
+of selecting all nodes.
+
+When two or more objects are selected, the right pane shows pictorial alignment
+controls; the same actions are under **Layout > Align selection**. Align left,
+horizontal centers, right, top, vertical centers or bottom relative to the
+selection's outer bounds. Three or more objects also enable horizontal/vertical
+distribution with equal edge-to-edge gaps, keeping the two end objects fixed.
+Each action is one Undo step, and positions survive saving/reopening. A selected
+container and its descendants are treated as one object, never moved twice.
+These geometric tools apply to Flowchart, State, Class and ER only; other
+families keep their own semantic/data-driven positioning.
 
 **Add one.** Double-click empty canvas, or double-click a shape in the left
 palette, or drag a shape from the palette onto the canvas.
@@ -70,9 +148,11 @@ another node.
 link properties, where you can change the arrow style or add a label. `Delete`
 removes it.
 
-**Colour something.** Select a node, then click a swatch under *Fill* or
-*Outline* in the right pane. The `+` swatch opens a full colour picker if the
-eight presets aren't enough.
+**Colour something.** Select an object, then click its *Fill*, *Outline* or
+other color field. The dialog has a color wheel, brightness, exact RGB channels
+and hex entry. It supports all 16,777,216 RGB colors, not just presets, with
+256 opacity levels for typed diagram colors that support transparency.
+**Use color** confirms; **Cancel** leaves the diagram unchanged.
 
 **Give it an icon.** With a node selected, pick from the *Icon* dropdown.
 
@@ -81,8 +161,9 @@ layered, tree, force, circular, radial or grid — or press `Ctrl+R` to re-run t
 current one. This throws away manual positions by design: you asked for a fresh
 arrangement.
 
-**Watch the file.** The right-hand *Source* pane is the actual file contents,
-live. Everything above shows up there as you go.
+**Watch the file.** Source is collapsed by default for every diagram type.
+Click **Source** in the status bar, or **View > Show source pane**, to see the
+actual file contents update live. Collapse it again to return space to the canvas.
 
 **Save** with `Ctrl+S`.
 
@@ -191,6 +272,12 @@ looked at rather than the centre of the window.
 
 ## The shape palette
 
+The document type determines its tools. A flowchart shows flowchart shapes;
+a state diagram shows states and start/end markers; a class diagram shows its
+selection-driven class inspector. There is no collection dropdown that can
+make a flowchart look like a C4 document while leaving its syntax unchanged.
+Choose a new document type from the New gallery instead.
+
 Each entry shows a **preview** of the shape beside its name, with its colours and
 icon. The names are still there — a thumbnail is not a label, and "Preparation"
 or "Asymmetric" is what you search for once you know what it looks like — but the
@@ -205,6 +292,9 @@ it.
 to add it to the centre of the view. Both take the same code path, so a drop is
 one undo step, opens the label for renaming, and snaps to the same 10px grid as a
 drag — a drop should not be a second, subtly different way of adding a node.
+Start/end markers are real Mermaid state pseudo-states, not nodes labelled
+"Start" or "End"; they must be connected to a transition before saving.
+Unsupported advanced state tools are not offered as ordinary shapes.
 
 The node is measured before it is positioned. Placing it against an assumed width
 and measuring afterwards leaves it off-centre by half the difference — invisible
@@ -260,12 +350,16 @@ and both are deliberate:
 
 ## Colours beyond the palette
 
-The eight swatches under Fill and Outline are a curated set that keeps diagrams
-looking coherent, and they stay the fast path. The `+` at the end of each row
-opens a picker — a hue/saturation wheel, a brightness slider, a hex field and 48
-presets — seeded with the colour already in use, so adjusting a shade is a nudge
-rather than a fresh guess. Once a custom colour has been chosen the `+` button
-takes its colour, so applying it to a second node is one click.
+Color fields open a full picker seeded with the current color. Choose with the
+wheel and brightness slider, type exact Red/Green/Blue values from 0 to 255, or
+enter hex, RGB, HSL or a named color. Alpha-enabled fields also offer an opacity
+slider and Alpha channel. Eight-digit hex follows CSS order, `#RRGGBBAA`,
+not alpha-first desktop notation. Transparent colors are saved as CSS RGBA.
+Flowchart/state metadata colors remain opaque RGB for compatibility.
+
+Invalid input disables **Use color**, rather than applying the last valid color.
+**Use default**, where available, clears the override; Cancel and closing the
+dialog do not change it. Presets are optional shortcuts, not a color limit.
 
 The format has always stored an arbitrary hex string; hand-editing the source
 worked fine. The limitation was the palette's alone.
@@ -315,9 +409,10 @@ that only resolved inside one particular renderer would make the pack useless to
 every other reader.
 
 The four built-in collections — Flowchart, C4 model, Architecture, State
-machine — are embedded packs that go through exactly the same loader. A pack
-format only used by other people is one nobody notices is broken; this way any
-change that breaks third-party packs breaks the editor's own palette first.
+machine — remain embedded pack data for library consumers. The editor presents
+only tools appropriate to its active diagram family; those pack names are not
+diagram-type choices. The packs still use the same loader, so format regressions
+are exercised by built-in data as well as external packs.
 
 **What the loader refuses**, because installing a pack must never change how an
 existing diagram looks:
@@ -506,8 +601,10 @@ and your colours return. Nothing is deleted either way.
 | Double-click canvas | Add a node |
 | Double-click node | Rename it |
 | Click a link | Select it — `Delete` removes, `F2` edits the label |
+| `Shift`-click a node or group header | Add/remove it from the selection |
 | Drag the green handle | Connect to another node |
 | Drag the background | Marquee-select |
+| `Shift`-drag the background | Add another marquee selection |
 | Space / middle / right / `Ctrl` drag | Pan |
 | Drag with the hand tool | Pan with an ordinary left-drag |
 | Wheel | Scroll vertically |
@@ -529,15 +626,53 @@ always pan, whichever tool is active.
 
 ## The command line
 
+### Adopt a rendered Flowchart
+
+`adopt --positions` retains its existing position-only behavior. To explicitly
+preserve a rendered Flowchart's node dimensions, wrapped label placement, group
+frames and connector composition, use:
+
+```powershell
+merpeeps adopt original.mmd --geometry rendered-geometry.json --out editable.mmd
+```
+
+The offline preview exposes `await window.merpeepsHarvestGeometry()` to capture
+the currently rendered SVG in diagram units, without recomputing its layout.
+Geometry must cover every node (including legend items) and match the source
+identities, content and group memberships. The command refuses stale/incomplete
+input and does not change the original unless `--write` is explicitly supplied.
+No borrowed layout-engine UI is added.
+
+The Core equivalent is `RenderedGraphGeometry.Parse(json)` followed by
+`AdoptRenderedGeometryCommand`, which supports the normal `EditHistory` Undo/Redo
+contract. Dimensions and reference geometry persist in the `.mmd`, while the
+diagram body remains byte-identical. Native selection/hit testing, native SVG
+export and the Merpeeps-enhanced preview honor the saved geometry.
+
+Stored node sizes are no longer replaced by text measurement on native load.
+Polyline `layout.edges` waypoints are rendered and selectable. A whole-group
+translation moves its imported internal routes and labels with it. Moving an
+endpoint individually or changing content invalidates the corresponding cached
+native route/label and uses normal native drawing; the enhanced preview reports
+a stale snapshot rather than claiming reference fidelity. Re-adopt after such
+edits when exact reference composition is required.
+
+This is geometry fidelity, not identical browser/native pixels. Browser curves
+are sampled into editable native polylines (default maximum two-unit arc-length
+spacing); SVG coordinates round to two decimals. Font rasterization, arrowheads,
+cylinder/rounded-corner details and viewer scaling can differ. HTML-only aside
+footnotes/links are not silently invented as diagram elements.
+
 `merpeeps` does everything the editor does to a file, without a window. Useful in
 CI, hooks and scripts.
 
 ```
 inspect
   merpeeps read <file>                 print the Merpeeps block as JSON
+  merpeeps capabilities <file>         native editing/layout/SVG support as JSON
   merpeeps describe <file>             structure as JSON, without the body
   merpeeps describe <file> --positions   ... including stored coordinates
-  merpeeps validate <file>...          check invariants (exit 1 on failure)
+  merpeeps validate <file>...          check metadata invariants (not Mermaid syntax)
 
 change
   merpeeps edit <file> --ops <json|file|->   apply operations
@@ -558,9 +693,262 @@ development
   merpeeps conformance <samples.json>  run the render-free invariant suite
 ```
 
-Everything under **change** prints to stdout and leaves your file alone. Add
-`--write` to edit in place, or `--out <path>` to write elsewhere. The same is
-true of `strip`. Commands that discard work should be ones you asked for.
+`edit`, `layout` and `adopt` print to stdout and leave your file alone. Add
+`--write` to edit in place, or `--out <path>` to write elsewhere. `strip`
+also defaults to stdout and supports `--write`, but not `--out`.
+
+### Native support versus metadata validation
+
+Native editing, layout and SVG rendering support `flowchart`, `graph`,
+`stateDiagram`, `stateDiagram-v2`, `classDiagram`, `classDiagram-v2`, `erDiagram`
+and `sequenceDiagram`. Sequence diagrams use ordered semantic layout instead of
+the graph engines. The legacy `flowchart-elk` directive is
+also parsed as a flowchart; it does not enable an ELK layout engine.
+
+`merpeeps capabilities` reports the source family and `canReadMetadata`,
+`canEdit`, `canLayout`, `canRenderNatively` flags. This is a family-level check,
+not full syntax validation. The native adapters implement a subset of those
+grammars.
+
+For a new diagram, choose **File > New diagram...** and click a visual type tile.
+Creation starts empty rather than inserting its preview's content. Alternate
+dialects are available under **Other syntax…**. Existing unsaved changes require
+an explicit discard choice; **Back to diagram** keeps the current document.
+
+Every diagram family uses the same workspace: items for the active type on the
+left, canvas in the center, and selected-object properties on the right.
+The Amplify Studio layout uses a narrow icon-only rail. Hover or keyboard-focus
+an icon to read its name. The layers button opens the diagram outline; the plus
+button returns to creation. These view changes preserve selection, source and
+history. On smaller windows, layout and diagram-theme dropdowns remain available
+through their ordinary menus.
+Click a pictorial stencil to create an element immediately with a unique name
+and sensible defaults. No creation form or Apply step is needed; the element
+already exists, is selected, and can be removed with one Undo. Its properties
+can be changed afterward. Items that need an existing owner explain that
+requirement in their tooltip. Clicking a stencil commits valid inline property edits before adding the next
+element. Invalid edits show a message and block insertion without disabling
+the whole palette. Explicit creation forms still require Apply or Cancel.
+
+For pie charts, values are relative weights: a single positive slice is always
+100%; two slices with values 30 and 10 display 75% and 25%. For timelines,
+**Time period** adds the next column from left to right; **Event** adds detail
+beneath the selected period. Several events in one period remain one column.
+Horizontal timelines have a shared time line below aligned period headings,
+with events connected through the gaps between cards. An explicitly top-down
+timeline retains its orientation. This is presentation geometry, not a source
+rewrite or a change to temporal order.
+
+The left collection contains only creation stencils. Diagram-wide titles,
+display options, contents, architecture alignment and Gantt reference time are
+in the **Diagram** menu. **Diagram > Add...** retains the explicit custom
+creation form for cases where you want to enter details before insertion.
+Flowchart and state stencils retain their double-click and drag gestures.
+Switching the selection
+does not hide the item palette or mix in tools for a different diagram family.
+
+The inspector shows editable fields immediately when you select an object.
+Edit **Entity name**, **Class name**, or the selected object's label directly;
+there is no Rename/Edit navigation step. Press Enter or leave the field to
+commit a valid change (Ctrl+Enter for multiline text). Dropdowns and checkboxes
+commit their choice directly. Escape cancels the pending edit; Undo reverses a
+committed change. Invalid values stay visible with an error, without altering
+the diagram. Changing selection keeps an invalid draft attached to its owner.
+
+Less-used identity, appearance and type fields are in collapsible sections.
+Use the sliders icon beside the selected object's editable name to reveal
+those sections. Creation, connection, ordering and deletion actions keep
+descriptive tooltips and accessibility names even where their visible label is
+an icon.
+Class attributes and methods, and ER attributes, are grouped separately.
+Choose **Class** in the left palette. Select a class card to see its members
+and **Add attribute**, **Add method** and **Add relationship**. A member's
+signature, visibility and modifiers appear only when that member is being edited.
+Explicit member-creation forms still use Apply/Cancel. Existing-object fields
+commit inline; selecting another object restores any invalid draft when you
+return to its owner.
+
+To connect classes, select the source, choose **Add relationship**, then click
+the target class on the canvas. Escape cancels without adding history.
+Tab/Shift+Tab and Enter offer keyboard target selection. The new relationship is
+selected automatically; its inspector contains its type, label, endpoint
+multiplicities and optional advanced ends. Clicking an existing relationship
+opens that same editor. **Reverse direction**, **Change source…** and
+**Change target…** operate only on that relationship.
+
+**More class actions** opens one task for class identity/generics/annotations,
+namespace assignment, size, an attached diagram note or an interface.
+**Diagram > Namespaces… / Display options…** contains diagram-wide settings
+without cluttering the object inspector. Diagram notes are not presentation
+speaker notes. Interface occurrences are added together with their relationship
+and undo together.
+
+Entity-relationship diagrams use the same selection-driven workflow, with
+entity-specific fields rather than Class members. Add an entity, select it and
+add typed attributes with primary, foreign and unique key checkboxes and optional
+comments. Nullable type suffixes such as `string?` are preserved. Imported `*id`
+names expose their primary-key meaning; clearing the PK checkbox removes it
+explicitly. Native key-cell presentation differs from stock Mermaid's literal
+asterisk display for that shorthand; explicit `id PK` is portable across both.
+
+An ER relationship has independent source and target cardinalities plus an
+identifying/non-identifying line type and one role label. Entities and subgraphs
+can both be endpoints. Self-relationships and parallel relations use visible
+routes rather than collapsed lines. Subgraphs have global IDs, labels, parents
+and optional local directions; removing a group retains its entities and reparents
+child groups. Populated frames follow their contents; dragging an empty frame
+stores its bounds in `x-merpeeps.layout.groups` so its location survives reopening.
+Empty frames are not independently resizable. Unsupported native styling/icons are diagnosed instead of silently
+dropped. The SVG layout uses approximate font metrics; interactive entity column
+fit uses measured font widths.
+
+Sequence diagrams keep participants and ordered messages in a separate model,
+not graph nodes. Select a participant and **Add message**, then click its
+recipient or lifeline. Message text and arrow style are primary fields;
+activation, central-connection and lifecycle details are under
+**Activation and lifetime**. Participant aliases can include line breaks.
+All 26 documented grammar arrow tokens are retained, including half arrows.
+
+Use **Diagram > Timeline…** for messages, notes, activations, numbering and
+nested fragments. Select a fragment branch to add its children. Earlier/later
+actions change sequence order rather than free-floating Y coordinates.
+Branch conditions edit inline with `Ctrl+Enter` or focus loss. Both the initial
+condition and secondary `else`, `and` and `option` conditions survive saving,
+reopening and Undo/Redo, including changes to otherwise empty branches.
+Participant creation is paired with its receiving message, and invalid lifetime
+or activation edits leave the current model unchanged. Open activations are
+drawn through the sequence end without inserting an extra deactivation.
+
+Sequence `describe` output names participants and statements instead of reporting
+an apparently empty graph. Generic CLI/MCP graph edits, coordinate adoption and
+graph layout are refused for sequences; typed `SequenceEditing` library commands
+and the native editor provide sequence authoring. Native SVG text measurement is
+approximate. Some Mermaid-valid lifetime/box orders remain source-only under
+explicit native-policy diagnostics, not mislabeled syntax failures.
+
+## Data, hierarchy and board authoring
+
+The gallery also exposes Pie, Quadrant, XY, Radar, Timeline, User Journey,
+Mindmap, Tree View, Packet and Kanban. All start empty and retain their own
+data structures; they do not create substitute flowchart nodes.
+
+Select a slice, point, series or curve to edit chart data. Quadrant point
+dragging changes normalized X/Y values; XY and Radar value dragging changes
+values rather than authored frame bounds. Donut holes use actual annular paths.
+Radar axis/curve identities are separately scoped, and axis reordering keeps
+values tied to their original dimensions.
+
+Timeline periods are ordered text labels, not parsed/sorted dates. Events,
+sections, journey scores and actor lists have contextual editors. Outline
+nodes support child/sibling insertion and cycle-safe subtree movement. Mindmaps
+retain their node shapes and formatted labels; Tree View preserves directories,
+descriptions, icon overrides and box-drawing hierarchies. External icon/CSS
+dependencies are preserved and diagnosed, not assumed installed.
+
+Packet fields retain relative widths versus explicit ranges and must be
+contiguous. Moving/deleting a field explicitly reflows ranges in one undo.
+Kanban cards retain YAML metadata and opaque identities independently of source
+IDs; cards can be moved between columns without deleting/recreating them.
+Ticket links remain data unless deliberately opened.
+
+Sankey's `labelStyle` option accepts `legacy` or `outlined`. Outlined labels use
+a glyph stroke in the diagram background color and sit on the appropriate side
+of the highest-value node's layer. Renaming a node retains its custom color;
+a conflicting color already stored under the new name must be resolved first.
+Treemap labels and formatted values that cannot fit their tiles remain in the
+document and produce fit diagnostics instead of shrinking or changing content.
+
+## Block and Architecture authoring
+
+Block diagrams are grids, not free-positioned flowcharts. Create shapes,
+spacers, block-arrow shapes or composites, then edit their column spans and
+scoped column counts. Select a named block and choose **Add connection**, then
+click the destination. Selecting a connection exposes its label, independent
+endpoint markers and line style. **Move in grid** changes order or parentage
+without replacing the block's identity. Appearance and style classes remain
+separate tasks.
+
+Architecture diagrams have services, junctions and nested groups. Select a
+service/junction, choose **Connect ports**, then click a target; edit the
+connection to choose ports, arrowheads and member-group-boundary attachment.
+Row/column alignments use ordered service/junction identifiers. Contradictory
+alignments fail before changing the diagram. Native spacing controls support
+icon size, node separation and ideal edge length; fcose-specific settings stay
+in source with an explicit diagnostic.
+
+The source pane starts collapsed in all workspaces, at every window size.
+The item and properties panes become narrower in compact windows so the canvas
+remains usable. **View > Show item palette** and **View > Show source pane**
+control visibility; resizing or changing diagram type preserves those choices
+without changing source content.
+
+## Strategy maps and cause diagrams
+
+Wardley components use **visibility** vertically and **evolution** horizontally.
+Dragging a component edits those data values in one undo step; pipeline
+variants inherit visibility from their parent. Select a component to edit its
+strategy, inertia or evolution target, create a dependency, or add a pipeline
+variant. Annotation coordinates follow the pinned parser's visibility/evolution
+order. Automatic dual-label stages and explicitly sized stages keep their
+different source forms.
+
+Ishikawa creation starts with the problem statement, then causes and subcauses.
+Select a cause to rename, move or remove its subtree. Cynefin creation uses the
+five fixed domains; all items remain available in the navigator, including
+confusion items beyond the three displayed badges. Moving an item between
+domains keeps its identity.
+
+These workspaces initially use actual-size text. Pan to inspect larger
+diagrams or choose **Fit** for an overview. Pending inspector edits block
+Wardley data dragging so a gesture cannot overwrite an unapplied field value.
+
+## Sets, grammars and workflows
+
+The gallery includes all 33 families from the pinned catalog. A new document is
+empty; selecting a type does not insert a demonstration diagram.
+
+For Venn, create sets, select their common overlap, and add text to that region.
+Optional sizes are data, not dragged circle coordinates. An area-fit warning
+means the requested intersections cannot all be matched by the fitted circles.
+Railroad offers EBNF, ABNF, PEG and primitive notation. Select a grammar symbol
+to edit it, combine it with another symbol, make it optional or repeat it.
+ABNF identifiers use hyphens rather than underscores.
+
+For Swimlanes, create responsibility lanes and then their steps; changing a
+step's owning lane changes the layout without discarding its relationships.
+Use Case elements distinguish actors, use cases, notes and JSON tables. Include,
+extend and generalization are typed UML relationships, not ordinary labels.
+Their label/marker syntax is fixed by the relationship kind; custom labels,
+end markers and minimum lengths are offered only for associations. Internal
+links remain selectable above lane, system-boundary and flow backgrounds.
+JSON is displayed as ordered table data and is never executed.
+
+Agentflow keeps flows, shared global elements, tools and connectors distinct.
+Metadata and connector addresses remain inert. Collapsing a flow retargets its
+visible connections without deleting its children. Event Modeling follows the
+order of timeframe declarations, not their numeric labels; reset frames and
+explicit references control inferred incoming relations. Payloads remain inert
+text, including HTML and URLs. ZenUML has its own participants and nested call
+tree; it is not converted into Mermaid's separate sequence syntax.
+
+Some native features remain limited: additional canonical Agentflow shapes and
+ZenUML annotators can be refused; nested lane directions, requested external
+layout algorithms and edge animations may be retained with diagnostics rather
+than reproduced. Family availability must not be read as full upstream feature
+or external-viewer parity.
+
+Class card dimensions are not silently changed when members are added.
+**Resize to content** explicitly sizes the selected card from measured content;
+manual dimensions are available under **More class actions > Size…**. Class callbacks
+are preserved as inert source, never executed. Unsupported native style
+properties produce diagnostics rather than an implied fidelity promise.
+
+For other families, native commands refuse the operation before writing.
+`read`, `strip`, metadata validation and the reference `preview` remain
+available. A metadata validation **PASS** does not mean the diagram was parsed
+or rendered correctly. `bake` also needs a native adapter, even for grammars
+that support Mermaid `style` statements; unsupported CLI/MCP bake requests fail
+without producing a stripped file. Use `strip` explicitly when that is intended.
 
 A two-operation edit, without a temporary file:
 
@@ -609,11 +997,18 @@ merpeeps_describe        merpeeps_read_metadata   merpeeps_validate
 merpeeps_edit            merpeeps_layout          merpeeps_layout_engines
 merpeeps_set_positions   merpeeps_strip           merpeeps_bake
 merpeeps_svg             merpeeps_open
+merpeeps_capabilities
 ```
 
 Point your agent at `src/Merpeeps.Mcp/bin/Release/net10.0/Merpeeps.Mcp.dll` over
 stdio. The tools are deliberately token-cheap: `merpeeps_describe` returns a
 compact summary rather than the whole file.
+
+Call `merpeeps_capabilities` before native editing or SVG export. Unsupported
+native operations return `ok: false` with capabilities and a diagnostic.
+`merpeeps_validate` labels its scope as `metadata` and reports
+`syntaxValidated: false`; metadata-only tools such as `merpeeps_set_positions`
+do not require a native adapter.
 
 Every one of those has a CLI verb, and every CLI verb has a tool, with two
 stated exceptions: `preview` needs the vendored mermaid bundle, which the MCP
@@ -641,6 +1036,12 @@ to gain by inventing coordinates for it.
 ---
 
 ## Troubleshooting
+
+**"My diagram opens with an empty canvas and a source-only notice."** Its family
+has no native adapter. Your source is retained unchanged; native editing/layout
+and SVG export are disabled rather than drawing invented nodes. **View > Show
+real mermaid** opens the reference renderer. **Save As** can copy the original
+source, and plain export can remove metadata without interpreting the diagram.
 
 **"The reference pane says it can't start."** No web engine is installed. The
 pane is a comparison view only — everything else works without it. See

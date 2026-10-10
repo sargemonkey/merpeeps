@@ -12,8 +12,16 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <IsPackable>false</IsPackable>
+    <IsPackable>true</IsPackable>
     <IsAotCompatible>true</IsAotCompatible>
+    <PackageId>Merpeeps.Render</PackageId>
+    <Version>0.2.0-preview.1</Version>
+    <Authors>Merpeeps contributors</Authors>
+    <Description>Offline Mermaid reference rendering and syntax-validation assets for native hosts.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/sargeMonkey/merpeeps</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,6 +46,20 @@
                       LogicalName="Merpeeps.Render.Assets.mermaid.min.js" />
     <EmbeddedResource Include="Assets\vendor\mermaid\LICENSE"
                       LogicalName="Merpeeps.Render.Assets.mermaid.LICENSE" />
+    <EmbeddedResource Include="Assets\vendor\mermaid\.version"
+                      LogicalName="Merpeeps.Render.Assets.mermaid.version" />
+    <EmbeddedResource Include="Assets\validation.js"
+                      LogicalName="Merpeeps.Render.Assets.validation.js" />
+    <EmbeddedResource Include="Assets\zenuml-validation.js"
+                      LogicalName="Merpeeps.Render.Assets.zenuml-validation.js" />
+    <EmbeddedResource Include="Assets\vendor\zenuml\zenuml.js"
+                      LogicalName="Merpeeps.Render.Assets.zenuml.js" />
+    <EmbeddedResource Include="Assets\vendor\zenuml\LICENSE"
+                      LogicalName="Merpeeps.Render.Assets.zenuml.LICENSE" />
+    <EmbeddedResource Include="Assets\vendor\zenuml\THIRD-PARTY-NOTICES.txt"
+                      LogicalName="Merpeeps.Render.Assets.zenuml.NOTICES" />
+    <EmbeddedResource Include="Assets\vendor\zenuml\.version"
+                      LogicalName="Merpeeps.Render.Assets.zenuml.version" />
     <EmbeddedResource Include="Assets\vendor\js-yaml\js-yaml.mjs"
                       LogicalName="Merpeeps.Render.Assets.js-yaml.mjs" />
     <EmbeddedResource Include="Assets\vendor\js-yaml\LICENSE"
@@ -46,5 +68,14 @@
                       LogicalName="Merpeeps.Render.Assets.merpeeps.index.js" />
     <EmbeddedResource Include="..\..\packages\merpeeps-mermaid-layout\src\mermaid-plugin.js"
                       LogicalName="Merpeeps.Render.Assets.merpeeps.plugin.js" />
+    <EmbeddedResource Include="..\..\packages\merpeeps-mermaid-layout\src\rendered-geometry.js"
+                      LogicalName="Merpeeps.Render.Assets.rendered-geometry.js" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="PACKAGE.md" Pack="true" PackagePath="README.md" />
+    <None Include="Assets\vendor\mermaid\LICENSE" Pack="true" PackagePath="licenses\mermaid-LICENSE" />
+    <None Include="Assets\vendor\js-yaml\LICENSE" Pack="true" PackagePath="licenses\js-yaml-LICENSE" />
+    <None Include="Assets\vendor\zenuml\LICENSE" Pack="true" PackagePath="licenses\zenuml-LICENSE" />
+    <None Include="Assets\vendor\zenuml\THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="licenses\zenuml-THIRD-PARTY-NOTICES.txt" />
   </ItemGroup>
 </Project>

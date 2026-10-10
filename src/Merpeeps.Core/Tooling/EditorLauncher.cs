@@ -27,6 +27,8 @@ public static class EditorLauncher
 
     /// <summary>The editor's filename on this platform.</summary>
     public static string ExecutableName =>
+        OperatingSystem.IsWindows() ? "Merpie.App.exe" : "Merpie.App";
+    public static string LegacyExecutableName =>
         OperatingSystem.IsWindows() ? "Merpeeps.App.exe" : "Merpeeps.App";
 
     /// <summary>
@@ -63,7 +65,9 @@ public static class EditorLauncher
             // editor lives in is the more natural thing to type, and refusing
             // it would be pedantry dressed up as strictness.
             found.Add(trimmed);
-            found.Add(Path.Combine(trimmed, ExecutableName));
+            AddDirectory(trimmed);
+            if (trimmed.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+                AddDirectory(Path.Combine(trimmed, "Contents", "MacOS"));
         }
 
         if (!string.IsNullOrWhiteSpace(baseDirectory))
@@ -71,15 +75,26 @@ public static class EditorLauncher
             var here = baseDirectory.TrimEnd(
                 Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-            found.Add(Path.Combine(here, ExecutableName));
+            AddDirectory(here);
 
-            if (SiblingBuildOutput(here) is { } sibling) found.Add(sibling);
+            if (SiblingBuildOutput(here) is { } sibling) AddDirectory(sibling);
+            if (Path.GetFileName(here).Equals("mcp", StringComparison.OrdinalIgnoreCase) &&
+                Path.GetDirectoryName(here) is { } package)
+            {
+                AddDirectory(Path.Combine(package, "app"));
+                AddDirectory(Path.Combine(package, "Merpie.app", "Contents", "MacOS"));
+            }
         }
 
         // Distinct because an override naming the calling directory would
         // otherwise produce the same path twice, and a report that lists the
         // same place it looked twice reads like a bug.
         return found.Distinct(PathComparer).ToArray();
+        void AddDirectory(string directory)
+        {
+            found.Add(Path.Combine(directory, ExecutableName));
+            found.Add(Path.Combine(directory, LegacyExecutableName));
+        }
     }
 
     /// <summary>
@@ -197,12 +212,12 @@ public static class EditorLauncher
         var joined = Path.Combine(segments);
         if (baseDirectory.StartsWith('/')) joined = "/" + joined;
 
-        return Path.Combine(joined, ExecutableName);
+        return joined;
     }
 
     private static bool IsExecutable(string candidate) =>
-        string.Equals(Path.GetFileName(candidate), ExecutableName,
-            StringComparison.OrdinalIgnoreCase);
+        string.Equals(Path.GetFileName(candidate), ExecutableName, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Path.GetFileName(candidate), LegacyExecutableName, StringComparison.OrdinalIgnoreCase);
 
     private static StringComparer PathComparer =>
         OperatingSystem.IsWindows()

@@ -12,9 +12,9 @@
   <!-- NuGet metadata. -->
   <PropertyGroup>
     <PackageId>Merpeeps.Core</PackageId>
-    <Version>0.1.1</Version>
+    <Version>0.2.0-preview.1</Version>
     <Authors>Merpeeps contributors</Authors>
-    <Description>Store diagram layout positions, styling and metadata inside ordinary Mermaid files, without changing what they render. Reference implementation of the Merpeeps format.</Description>
+    <Description>Typed parsing, reversible editing, native layout and SVG for 33 Mermaid diagram families, with compatible in-file layout and styling metadata. Shared engine for Merpie.</Description>
     <PackageTags>mermaid;diagram;layout;graph;flowchart;frontmatter;merpeeps</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>

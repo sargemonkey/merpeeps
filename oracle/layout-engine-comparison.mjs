@@ -1,16 +1,15 @@
 // Render one diagram through every available layout engine, side by side.
 //
 // The question this answers: how does Merpeeps differ from the official
-// @mermaid-js/layout-elk and layout-tidy-tree plugins? They share a plugin
+// bundled dagre and ELK layout engines? They share a layout
 // interface, so it is easy to assume they are alternatives to each other.
 // They are not, and the difference is visible rather than theoretical:
-// elk and tidy-tree COMPUTE a layout from the graph's structure, while Merpeeps
+// dagre and ELK COMPUTE a layout from the graph's structure, while Merpeeps
 // REPLAYS a layout a human chose. Put them next to each other and the
 // distinction stops needing explanation.
 //
-// This is a documentation generator, not a test — the official plugins are
-// devDependencies (elk alone is 27 MB) and nothing in CI depends on them. Run
-// it by hand when the comparison image needs regenerating.
+// This is a documentation generator, not a test. Mermaid 12 bundles ELK.
+// The old tidy-tree plugin targets Mermaid 11 and is not part of this comparison.
 
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -28,15 +27,12 @@ const MIME = { '.html': 'text/html', '.mjs': 'text/javascript',
 // These are devDependencies, so check before launching a browser that would
 // otherwise fail with an opaque module-resolution error inside the page.
 const REQUIRED = [
-  'node_modules/@mermaid-js/layout-elk/dist/mermaid-layout-elk.esm.mjs',
-  'node_modules/@mermaid-js/layout-tidy-tree/dist/mermaid-layout-tidy-tree.esm.mjs',
+  'node_modules/mermaid/dist/mermaid.esm.mjs',
 ];
 const missing = REQUIRED.filter((p) => !existsSync(join(ROOT, p)));
 if (missing.length > 0) {
   console.error(
-    'The official layout plugins are not installed. This script compares against\n' +
-    'them, so install them first:\n\n' +
-    '  npm install --save-dev @mermaid-js/layout-elk @mermaid-js/layout-tidy-tree\n\n' +
+    'The pinned Mermaid runtime is not installed. Run npm ci in oracle first.\n' +
     `missing:\n${missing.map((m) => `  ${m}`).join('\n')}`);
   process.exit(1);
 }
@@ -67,15 +63,12 @@ await page.goto(`http://127.0.0.1:${PORT}/plugin-page.html`, { waitUntil: 'load'
 
 const report = await page.evaluate(async () => {
   const mermaid = (await import('./node_modules/mermaid/dist/mermaid.esm.mjs')).default;
-  const elk = (await import('./node_modules/@mermaid-js/layout-elk/dist/mermaid-layout-elk.esm.mjs')).default;
-  const tidy = (await import('./node_modules/@mermaid-js/layout-tidy-tree/dist/mermaid-layout-tidy-tree.esm.mjs')).default;
   const { registerMerpeepsLayout, renderWithLayout } =
     await import('./node_modules/merpeeps-mermaid-layout/src/mermaid-plugin.js');
   const { strip } = await import('./node_modules/merpeeps-mermaid-layout/src/index.js');
 
-  mermaid.initialize({ startOnLoad: false, suppressErrorRendering: true });
-  mermaid.registerLayoutLoaders(elk);
-  mermaid.registerLayoutLoaders(tidy);
+  mermaid.initialize({ startOnLoad: false, suppressErrorRendering: true,
+    layout: 'dagre', theme: 'default', look: 'classic' });
   registerMerpeepsLayout(mermaid);
 
   // A deliberate arrangement: the two stores side by side under their service,
@@ -120,10 +113,8 @@ flowchart LR
 
   await add('dagre (built in)', 'Computes a layout from graph structure',
     () => mermaid.render('e1', plain));
-  await add('@mermaid-js/layout-elk', 'A different algorithm — also computed',
+  await add('ELK (built in)', 'A different algorithm — also computed',
     () => mermaid.render('e2', withAlgo(plain, 'elk')));
-  await add('@mermaid-js/layout-tidy-tree', 'A third algorithm — also computed',
-    () => mermaid.render('e3', withAlgo(plain, 'tidy-tree')));
   await add('merpeeps', 'Replays the arrangement a human chose',
     () => renderWithLayout(mermaid, 'e4', withPositions));
 

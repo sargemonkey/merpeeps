@@ -1,241 +1,212 @@
-using System;
 using System.Globalization;
-using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Merpeeps.Core.Model;
+using Merpeeps.Core.Parsing;
 
 namespace Merpeeps.App;
 
-/// <summary>
-/// A modal colour picker: a hue/saturation wheel, a brightness slider, a hex
-/// field and a grid of presets.
-/// </summary>
-/// <remarks>
-/// <para>The eight-swatch palette in the property pane is a curated set that
-/// keeps diagrams looking coherent, and it stays the fast path. But a fixed
-/// palette is a wall: the moment someone needs their organisation's brand
-/// colour the editor's answer was "you cannot have it" — while the format has
-/// always stored an arbitrary hex string, and hand-editing the source worked
-/// fine. The limitation was the UI's alone.</para>
-///
-/// <para><b>Why this is hand-built rather than Avalonia's ColorPicker.</b> That
-/// package was tried first and abandoned after failing twice: adding its styles
-/// to the application hung startup — and every headless test with it — and
-/// loading them per-window crashed the app outright, because the package's XAML
-/// is precompiled and cannot be resolved as a StyleInclude from another
-/// assembly. It ships no theme class either.</para>
-/// </remarks>
 public static class ColourPickerDialog
 {
-    /// <summary>
-    /// Ask for a colour. Returns a <c>#RRGGBB</c> string, or null if cancelled.
-    /// </summary>
-    /// <param name="owner">The window to centre on and block.</param>
-    /// <param name="title">What is being coloured.</param>
-    /// <param name="initial">The current colour as a hex string, if any.</param>
-    public static async Task<string?> PickAsync(Window owner, string title, string? initial)
+    /// <summary>Null means Cancel; reset returns defaultValue, which may be an empty string.</summary>
+    public static async Task<string?> PickAsync(Window owner, string title, string? initial,
+        bool allowAlpha = false, string? defaultValue = null)
     {
-        var start = ParseHex(initial) ?? Color.FromRgb(0x6C, 0x8E, 0xBF);
-        var (h, s, v) = ColourMath.RgbToHsv(start.R, start.G, start.B);
-        var colour = start;
+        var picker = new ColourPickerWindow(title, initial, allowAlpha, defaultValue);
+        await picker.ShowDialog(owner);
+        return picker.Result;
+    }
 
-        var wheel = new ColourWheel { Width = 220, Height = 220 };
-        wheel.SetHueSaturation(h, s);
+    internal static string Hex(Color c) => c.A == 255
+        ? $"#{c.R:X2}{c.G:X2}{c.B:X2}" : $"#{c.R:X2}{c.G:X2}{c.B:X2}{c.A:X2}";
 
-        var brightness = new Slider
+    internal static Color? ParseHex(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var hex = value.Trim();
+        if (!hex.StartsWith('#')) hex = "#" + hex;
+        return hex.Length is 4 or 5 or 7 or 9 && SequenceColors.TryParse(hex, out var c)
+            ? Color.FromArgb(c.Alpha, c.Red, c.Green, c.Blue) : null;
+    }
+
+    internal static Color? ParseColour(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (value.Trim().Equals("none", StringComparison.OrdinalIgnoreCase)) return Colors.Transparent;
+        return SequenceColors.TryParse(value, out var c) ? Color.FromArgb(c.Alpha, c.Red, c.Green, c.Blue) : ParseHex(value);
+    }
+
+    internal static string Source(Color c) => new ClassColor(c.R, c.G, c.B, c.A).Css;
+}
+
+internal sealed class ColourPickerWindow : Window
+{
+    private readonly bool _allowAlpha;
+    private readonly string? _initial;
+    private readonly ColourWheel _wheel = new() { Width = 200, Height = 200, HorizontalAlignment = HorizontalAlignment.Center };
+    private readonly Slider _brightness = new() { Minimum = 0, Maximum = 100 };
+    private readonly Slider _opacity = new() { Minimum = 0, Maximum = 255, TickFrequency = 1, IsSnapToTickEnabled = true };
+    private readonly ColourSample _sample = new() { Width = 60, Height = 36 };
+    private readonly TextBox _hex = new() { FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace") };
+    private readonly TextBox[] _channels = new TextBox[4];
+    private readonly TextBlock _error = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly Button _use = new() { Content = "Use color", IsDefault = true };
+    private Color _colour;
+    private bool _updating;
+    private bool _changed;
+
+    public string? Result { get; private set; }
+
+    public ColourPickerWindow(string title, string? initial, bool allowAlpha, string? defaultValue)
+    {
+        Title = title;
+        Width = 420;
+        Height = allowAlpha ? 700 : 644;
+        MinWidth = 360; MinHeight = 480;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        _allowAlpha = allowAlpha;
+        _initial = initial;
+        var body = new StackPanel { Spacing = 10, Margin = new Thickness(18) };
+        body.Children.Add(new TextBlock
         {
-            Minimum = 0, Maximum = 100, Value = v * 100,
-            Width = 220,
-        };
-
-        var preview = new Border
+            Text = allowAlpha ? "16.7 million RGB colors, plus 256 opacity levels." : "16.7 million RGB colors. This format uses opaque colors.",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        body.Children.Add(_wheel);
+        body.Children.Add(Labelled("Brightness", _brightness));
+        if (allowAlpha) body.Children.Add(Labelled("Opacity", _opacity));
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12 };
+        row.Children.Add(_sample);
+        Grid.SetColumn(_hex, 1); row.Children.Add(_hex);
+        _hex.PlaceholderText = allowAlpha ? "#RRGGBB or #RRGGBBAA" : "#RRGGBB";
+        AutomationProperties.SetName(_hex, "Hex color");
+        body.Children.Add(row);
+        var channels = new Grid { ColumnDefinitions = new ColumnDefinitions(allowAlpha ? "*,*,*,*" : "*,*,*"), ColumnSpacing = 8 };
+        var names = new[] { "Red", "Green", "Blue", "Alpha" };
+        for (var i = 0; i < 4; i++)
         {
-            Height = 44, Width = 84,
-            CornerRadius = new CornerRadius(4),
-            BorderThickness = new Thickness(1),
-            BorderBrush = new SolidColorBrush(Color.Parse("#999")),
-            Background = new SolidColorBrush(colour),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-
-        var hex = new TextBox
-        {
-            Text = Hex(colour),
-            Width = 124,
-            FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"),
-            PlaceholderText = "#RRGGBB",
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-
-        // One direction at a time. Without this the wheel and the hex box drive
-        // each other: updating the text from the wheel raises TextChanged, which
-        // parses it and moves the wheel back, so a drag stutters and snaps.
-        var updating = false;
-
-        void Show(Color c)
-        {
-            colour = c;
-            preview.Background = new SolidColorBrush(c);
-        }
-
-        void FromWheel()
-        {
-            if (updating) return;
-            updating = true;
-            try
+            var field = new TextBox();
+            _channels[i] = field;
+            if (i < 3 || allowAlpha)
             {
-                var (r, g, b) = ColourMath.HsvToRgb(
-                    wheel.Hue, wheel.Saturation, brightness.Value / 100);
-                Show(Color.FromRgb(r, g, b));
-                hex.Text = Hex(colour);
+                var labelled = Labelled(names[i] + " (0-255)", field);
+                AutomationProperties.SetName(field, names[i]);
+                Grid.SetColumn(labelled, i); channels.Children.Add(labelled);
             }
-            finally { updating = false; }
+            field.PropertyChanged += (_, e) => { if (e.Property == TextBox.TextProperty) FromChannels(); };
         }
-
-        void FromHex()
+        body.Children.Add(channels);
+        body.Children.Add(_error);
+        AutomationProperties.SetName(_error, "Color error");
+        AutomationProperties.SetLiveSetting(_error, AutomationLiveSetting.Polite);
+        var presets = new WrapPanel();
+        foreach (var color in new[] { "#FFFFFF", "#000000", "#64748B", "#EF4444", "#F97316", "#EAB308", "#22C55E", "#14B8A6", "#0EA5E9", "#3B82F6", "#8B5CF6", "#EC4899" })
         {
-            if (updating) return;
-            if (ParseHex(hex.Text) is not { } parsed) return;   // mid-typing is not an error
-            updating = true;
-            try
-            {
-                Show(parsed);
-                var (hh, ss, vv) = ColourMath.RgbToHsv(parsed.R, parsed.G, parsed.B);
-
-                // Grey has no hue, so leave the wheel's angle where it was.
-                // Snapping to red every time someone types a grey would move the
-                // marker off the axis they were working along.
-                wheel.SetHueSaturation(ss < 1e-6 ? wheel.Hue : hh, ss);
-                brightness.Value = vv * 100;
-            }
-            finally { updating = false; }
+            var sample = new ColourSample { Width = 22, Height = 22, Colour = ColourPickerDialog.ParseHex(color) };
+            var button = new Button { Content = sample, Padding = new Thickness(3), Margin = new Thickness(0, 0, 4, 4) };
+            AutomationProperties.SetName(button, color); ToolTip.SetTip(button, color);
+            button.Click += (_, _) => { _changed = true; SetColour(sample.Colour!.Value); };
+            presets.Children.Add(button);
         }
-
-        wheel.Picked += (_, _) => FromWheel();
-        brightness.PropertyChanged += (_, e) =>
+        body.Children.Add(new Expander { Header = "Presets", Content = presets, HorizontalAlignment = HorizontalAlignment.Stretch });
+        var footer = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(18) };
+        if (defaultValue is not null)
         {
-            if (e.Property == RangeBase.ValueProperty) FromWheel();
-        };
-        hex.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == TextBox.TextProperty) FromHex();
-        };
-
-        // A broader spread than the eight in the property pane, so most "I need
-        // a different blue" cases are one click rather than aiming at a wheel.
-        var swatches = new WrapPanel { MaxWidth = 260 };
-        foreach (var preset in Presets)
-        {
-            var btn = new Button
-            {
-                Width = 20, Height = 20,
-                Margin = new Thickness(0, 0, 2, 2),
-                Padding = new Thickness(0),
-                Background = new SolidColorBrush(Color.Parse(preset)),
-                BorderBrush = new SolidColorBrush(Color.Parse("#999")),
-                BorderThickness = new Thickness(1),
-                [ToolTip.TipProperty] = preset,
-            };
-            btn.Click += (_, _) => hex.Text = preset;
-            swatches.Children.Add(btn);
+            var reset = new Button { Content = "Use default" };
+            AutomationProperties.SetName(reset, "Use default");
+            reset.Click += (_, _) => { Result = defaultValue; Close(); };
+            footer.Children.Add(reset);
         }
-
-        string? picked = null;
-        var ok = new Button { Content = "Use this colour", IsDefault = true };
         var cancel = new Button { Content = "Cancel", IsCancel = true };
-
-        var window = new Window
+        AutomationProperties.SetName(cancel, "Cancel color");
+        AutomationProperties.SetName(_use, "Use color");
+        cancel.Click += (_, _) => Close();
+        _use.Click += (_, _) =>
         {
-            Title = title,
-            SizeToContent = SizeToContent.WidthAndHeight,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            CanResize = false,
-            Content = new StackPanel
-            {
-                Margin = new Thickness(16),
-                Spacing = 10,
-                Children =
-                {
-                    wheel,
-                    Labelled("Brightness", brightness),
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 10,
-                        Children = { preview, hex },
-                    },
-                    new TextBlock { Text = "Presets", Opacity = 0.7, FontSize = 11 },
-                    swatches,
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        HorizontalAlignment = HorizontalAlignment.Right,
-                        Spacing = 8,
-                        Margin = new Thickness(0, 6, 0, 0),
-                        Children = { cancel, ok },
-                    },
-                },
-            },
+            if (!_use.IsEnabled || !Validate(_colour)) return;
+            Result = !_changed && ColourPickerDialog.ParseColour(_initial) is not null ? _initial : ColourPickerDialog.Source(_colour);
+            Close();
         };
+        footer.Children.Add(cancel); footer.Children.Add(_use);
+        var layout = new DockPanel();
+        DockPanel.SetDock(footer, Dock.Bottom); layout.Children.Add(footer);
+        layout.Children.Add(new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        Content = layout;
 
-        ok.Click += (_, _) => { picked = Hex(colour); window.Close(); };
-        cancel.Click += (_, _) => window.Close();
-
-        await window.ShowDialog(owner);
-        return picked;
-    }
-
-    private static Control Labelled(string label, Control control) => new StackPanel
-    {
-        Spacing = 2,
-        Children =
+        _wheel.Picked += (_, _) => FromWheel();
+        _brightness.PropertyChanged += (_, e) => { if (e.Property == RangeBase.ValueProperty) FromWheel(); };
+        _opacity.PropertyChanged += (_, e) =>
         {
-            new TextBlock { Text = label, Opacity = 0.7, FontSize = 11 },
-            control,
-        },
-    };
-
-    /// <summary>
-    /// Six-digit hex, upper case, no alpha.
-    /// </summary>
-    /// <remarks>
-    /// Alpha is dropped deliberately. This is written into a mermaid file and
-    /// read by renderers we do not control, and an eight-digit hex is not
-    /// universally understood — a colour that silently failed to parse elsewhere
-    /// would be worse than one the picker never offered.
-    /// </remarks>
-    internal static string Hex(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
-
-    /// <summary>
-    /// Parse a hex colour, or null if it is not one yet.
-    /// </summary>
-    /// <remarks>
-    /// Null rather than an exception because this runs on every keystroke: "#AB"
-    /// is a half-typed colour, not a mistake to complain about.
-    /// </remarks>
-    internal static Color? ParseHex(string? hex)
-    {
-        if (string.IsNullOrWhiteSpace(hex)) return null;
-        var s = hex.Trim();
-        if (!s.StartsWith('#')) s = "#" + s;
-
-        // Avalonia accepts named colours and 8-digit forms; restrict to the
-        // shapes that round-trip into a mermaid file unchanged.
-        if (s.Length is not (4 or 7)) return null;
-        return Color.TryParse(s, out var c) ? c : null;
+            if (_updating) return;
+            if (e.Property == RangeBase.ValueProperty)
+            {
+                _changed = true;
+                SetColour(Color.FromArgb((byte)Math.Round(_opacity.Value), _colour.R, _colour.G, _colour.B));
+            }
+        };
+        _hex.PropertyChanged += (_, e) =>
+        {
+            if (_updating || e.Property != TextBox.TextProperty) return;
+            _changed = true;
+            if (ColourPickerDialog.ParseColour(_hex.Text) is not { } color) { Error("Enter a valid hex, RGB, HSL, or named color."); return; }
+            SetColour(color, updateHex: false);
+        };
+        SetColour(ColourPickerDialog.ParseColour(initial) ?? Color.FromRgb(108, 142, 191));
+        if (!string.IsNullOrWhiteSpace(initial) && ColourPickerDialog.ParseColour(initial) is null)
+        {
+            _hex.Text = initial;
+            _changed = false;
+        }
     }
 
-    /// <summary>A broad, flat palette — the common hues at several lightnesses.</summary>
-    private static readonly string[] Presets =
-    [
-        "#FFFFFF", "#F5F5F5", "#E0E0E0", "#BDBDBD", "#757575", "#424242", "#1A1A1A", "#000000",
-        "#FFCDD2", "#EF9A9A", "#E57373", "#F44336", "#D32F2F", "#B71C1C", "#FF8A80", "#FF5252",
-        "#F8BBD0", "#CE93D8", "#BA68C8", "#9C27B0", "#7B1FA2", "#4A148C", "#B39DDB", "#7E57C2",
-        "#BBDEFB", "#90CAF9", "#64B5F6", "#2196F3", "#1976D2", "#0D47A1", "#80DEEA", "#00ACC1",
-        "#C8E6C9", "#A5D6A7", "#81C784", "#4CAF50", "#388E3C", "#1B5E20", "#DCEDC8", "#AED581",
-        "#FFF9C4", "#FFF59D", "#FFEE58", "#FFC107", "#FF9800", "#E65100", "#FFCCBC", "#FF7043",
-    ];
+    private void FromWheel()
+    {
+        if (_updating) return;
+        _changed = true;
+        var (r, g, b) = ColourMath.HsvToRgb(_wheel.Hue, _wheel.Saturation, _brightness.Value / 100);
+        SetColour(Color.FromArgb(_colour.A, r, g, b));
+    }
+    private void FromChannels()
+    {
+        if (_updating) return;
+        _changed = true;
+        var bytes = new byte[4];
+        for (var i = 0; i < 4; i++)
+            if (!byte.TryParse(_channels[i].Text, NumberStyles.None, CultureInfo.InvariantCulture, out bytes[i]))
+            { Error("Each channel must be a whole number from 0 to 255."); return; }
+        SetColour(Color.FromArgb(bytes[3], bytes[0], bytes[1], bytes[2]));
+    }
+    private void SetColour(Color color, bool updateHex = true)
+    {
+        _updating = true;
+        try
+        {
+            _colour = color; _sample.Colour = color;
+            var (h, s, v) = ColourMath.RgbToHsv(color.R, color.G, color.B);
+            _wheel.SetHueSaturation(s < 1e-6 ? _wheel.Hue : h, s);
+            _brightness.Value = v * 100; _opacity.Value = color.A;
+            if (updateHex) _hex.Text = ColourPickerDialog.Hex(color);
+            var channels = new[] { color.R, color.G, color.B, color.A };
+            for (var i = 0; i < 4; i++) _channels[i].Text = channels[i].ToString(CultureInfo.InvariantCulture);
+            Validate(color);
+        }
+        finally { _updating = false; }
+    }
+    private bool Validate(Color color)
+    {
+        if (!_allowAlpha && color.A != 255) { Error("This field supports opaque RGB colors only. Use a six-digit hex color."); return false; }
+        _error.Text = ""; _error.IsVisible = false; _use.IsEnabled = true; return true;
+    }
+    private void Error(string message) { _error.Text = message; _error.IsVisible = true; _use.IsEnabled = false; }
+    private static Control Labelled(string name, Control field)
+    {
+        var label = new TextBlock { Text = name };
+        AutomationProperties.SetName(field, name);
+        AutomationProperties.SetLabeledBy(field, label);
+        return new StackPanel { Spacing = 4, Children = { label, field } };
+    }
 }

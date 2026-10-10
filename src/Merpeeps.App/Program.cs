@@ -26,7 +26,7 @@ class Program
     {
         try
         {
-            var path = Path.Combine(Path.GetTempPath(), "merpeeps-crash.txt");
+            var path = Path.Combine(Path.GetTempPath(), "merpie-crash.txt");
             File.AppendAllText(path,
                 $"[{DateTime.Now:u}] {kind}: {ex?.GetType().Name}: {ex?.Message}\n{ex?.StackTrace}\n\n");
         }

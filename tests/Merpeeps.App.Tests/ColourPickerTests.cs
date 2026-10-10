@@ -40,15 +40,11 @@ public class ColourPickerTests
         Assert.Null(ColourPickerDialog.ParseHex(input));
     }
 
-    /// <summary>
-    /// Alpha is not accepted, because the result is written into a mermaid file
-    /// read by renderers we do not control and eight-digit hex is not
-    /// universally understood.
-    /// </summary>
     [Fact]
-    public void EightDigitHexIsRejected()
+    public void EightDigitHexUsesCssAlphaLastNotAvaloniaAlphaFirst()
     {
-        Assert.Null(ColourPickerDialog.ParseHex("#804CAF50"));
+        var color = ColourPickerDialog.ParseHex("#804CAF50")!.Value;
+        Assert.Equal((0x80, 0x4C, 0xAF, 0x50), ((int)color.R, (int)color.G, (int)color.B, (int)color.A));
     }
 
     /// <summary>
@@ -69,15 +65,12 @@ public class ColourPickerTests
         Assert.Equal("#FFFFFF", ColourPickerDialog.Hex(Color.FromRgb(255, 255, 255)));
     }
 
-    /// <summary>
-    /// Alpha never reaches the file, even from a colour that carries it.
-    /// </summary>
     [Fact]
-    public void FormattingDropsAlpha()
+    public void FormattingKeepsAlphaLast()
     {
         var hex = ColourPickerDialog.Hex(Color.FromArgb(0x80, 0x4C, 0xAF, 0x50));
-        Assert.Equal("#4CAF50", hex);
-        Assert.Equal(7, hex.Length);
+        Assert.Equal("#4CAF5080", hex);
+        Assert.Equal(9, hex.Length);
     }
 
     [Theory]

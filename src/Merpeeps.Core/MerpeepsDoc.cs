@@ -251,6 +251,49 @@ public static class MerpeepsDoc
         return WithFrontmatter(next, doc.Body, ending);
     }
 
+    internal static string WithClassOptions(string source, bool hideEmptyMembersBox, bool hierarchicalNamespaces)
+    {
+        var doc = Split(source);
+        var frontmatter = new Dictionary<string, object?>(doc.Frontmatter);
+        var config = frontmatter.GetValueOrDefault("config") is Dictionary<string, object?> existing
+            ? new Dictionary<string, object?>(existing) : new Dictionary<string, object?>();
+        var options = config.GetValueOrDefault("class") is Dictionary<string, object?> prior
+            ? new Dictionary<string, object?>(prior) : new Dictionary<string, object?>();
+        options["hideEmptyMembersBox"] = hideEmptyMembersBox;
+        options["hierarchicalNamespaces"] = hierarchicalNamespaces;
+        config["class"] = options;
+        frontmatter["config"] = config;
+        return WithFrontmatter(frontmatter, doc.Body, DominantLineEnding(source));
+    }
+
+    internal static string WithDiagramConfiguration(string source, string family, Dictionary<string, object?> values, bool removeGlobalFontOverrides = false)
+    {
+        var doc = Split(source);
+        var frontmatter = new Dictionary<string, object?>(doc.Frontmatter);
+        var config = frontmatter.GetValueOrDefault("config") is Dictionary<string, object?> existing
+            ? new Dictionary<string, object?>(existing) : new Dictionary<string, object?>();
+        if (removeGlobalFontOverrides)
+            foreach (var key in new[] { "fontFamily", "fontSize", "fontWeight" }) config.Remove(key);
+        var options = config.GetValueOrDefault(family) is Dictionary<string, object?> prior
+            ? new Dictionary<string, object?>(prior) : new Dictionary<string, object?>();
+        foreach (var pair in values) options[pair.Key] = pair.Value;
+        config[family] = options;
+        frontmatter["config"] = config;
+        return WithFrontmatter(frontmatter, doc.Body, DominantLineEnding(source));
+    }
+
+    internal static string WithChartConfiguration(string source, object configuration, bool setTitle, string title, bool setDisplayMode = false, string? displayMode = null)
+    {
+        var split = Split(source);
+        var frontmatter = new Dictionary<string, object?>(split.Frontmatter) { ["config"] = configuration };
+        if (setDisplayMode)
+        {
+            if (displayMode is null) frontmatter.Remove("displayMode"); else frontmatter["displayMode"] = displayMode;
+        }
+        if (setTitle) frontmatter["title"] = title;
+        return WithFrontmatter(frontmatter, split.Body, DominantLineEnding(source));
+    }
+
     /// <summary>
     /// Which line ending the generated block should use.
     ///
@@ -435,5 +478,3 @@ public static class MerpeepsDoc
         }
     }
 }
-
-

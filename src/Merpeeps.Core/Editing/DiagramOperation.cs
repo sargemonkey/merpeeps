@@ -57,6 +57,25 @@ public static class OperationApplier
     private static string? ApplyOne(
         DiagramModel model, EditHistory history, DiagramOperation op)
     {
+        if (model.Sequence is not null)
+            throw new NotSupportedException("Use the typed SequenceEditing operations; generic graph edits do not apply to a sequence.");
+        if (model.Chart is not null)
+            throw new NotSupportedException("Use the typed ChartEditing operations; generic graph edits do not apply to charts.");
+        if (model.Outline is not null || model.Temporal is not null)
+            throw new NotSupportedException("Use OutlineEditing or TemporalEditing; generic graph edits do not apply.");
+        if (model.Packet is not null || model.Kanban is not null)
+            throw new NotSupportedException("Use PacketEditing or KanbanEditing; generic graph edits do not apply.");
+        if (model.Requirements is not null) throw new NotSupportedException("Use RequirementEditing for typed requirements.");
+        if (model.GitDiagram is not null) throw new NotSupportedException("Use GitDiagramEditing; diagram operations never mutate repository git state.");
+        if (model.Sankey is not null || model.Treemap is not null) throw new NotSupportedException("Use weighted diagram commands instead of generic graph edits.");
+        if (model.Blocks is not null || model.Architecture is not null) throw new NotSupportedException("Use typed Block grid or Architecture port/constraint edits.");
+        if (model.C4 is not null) throw new NotSupportedException("Use typed C4 declaration and relationship edits.");
+        if (model.Gantt is not null) throw new NotSupportedException("Use Gantt temporal edits with an explicit evaluation context.");
+        if (model.Wardley is not null || model.Ishikawa is not null || model.Cynefin is not null)
+            throw new NotSupportedException("Use the diagram's typed strategy, cause or domain editing commands.");
+        if (model.Venn is not null || model.Railroad is not null) throw new NotSupportedException("Use Venn set/overlap or Railroad grammar commands.");
+        if (model.Swimlane is not null || model.UseCase is not null) throw new NotSupportedException("Use typed lane-ownership or UML use-case commands.");
+        if (model.AgentFlow is not null || model.EventModeling is not null || model.Zen is not null) throw new NotSupportedException("Use the diagram's typed agent, event or ZenUML commands.");
         switch (op.Op.ToLowerInvariant())
         {
             case "addnode":

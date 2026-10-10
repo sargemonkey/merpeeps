@@ -77,8 +77,29 @@ public static class LayoutEngines
         All.Any(e => string.Equals(e.Id, id, StringComparison.OrdinalIgnoreCase));
 
     public static void Apply(DiagramModel model, string? engineId,
-        LayoutOptions? options = null) =>
+        LayoutOptions? options = null)
+    {
+        if (model.Sequence is not null)
+            throw new NotSupportedException("Sequence layout follows participant and message order; graph layout engines do not apply.");
+        if (model.Chart is not null)
+            throw new NotSupportedException("Charts use data scales; graph layout engines do not apply.");
+        if (model.Outline is not null || model.Temporal is not null)
+            throw new NotSupportedException("This diagram uses intrinsic hierarchy or temporal order; graph layout engines do not apply.");
+        if (model.Packet is not null || model.Kanban is not null)
+            throw new NotSupportedException("Packets and boards use intrinsic field/column order, not graph layout.");
+        if (model.Requirements is not null) throw new NotSupportedException("Requirement layout is derived from its typed relationships.");
+        if (model.GitDiagram is not null) throw new NotSupportedException("GitGraph layout follows diagram operation replay, not repository git state.");
+        if (model.Sankey is not null || model.Treemap is not null) throw new NotSupportedException("Weighted diagrams use their value/hierarchy layout.");
+        if (model.Blocks is not null || model.Architecture is not null) throw new NotSupportedException("Block grids and Architecture constraints own their native layout.");
+        if (model.C4 is not null) throw new NotSupportedException("C4 layout follows declaration order and configured row counts.");
+        if (model.Gantt is not null) throw new NotSupportedException("Gantt layout follows resolved time and task order.");
+        if (model.Wardley is not null || model.Ishikawa is not null || model.Cynefin is not null)
+            throw new NotSupportedException("Strategy diagrams use semantic coordinates, cause hierarchies or fixed domains.");
+        if (model.Venn is not null || model.Railroad is not null) throw new NotSupportedException("Venn circle fitting and Railroad grammar layout are not generic graph layouts.");
+        if (model.Swimlane is not null || model.UseCase is not null) throw new NotSupportedException("Use the ownership-aware Swimlane or typed Use Case layout.");
+        if (model.AgentFlow is not null || model.EventModeling is not null || model.Zen is not null) throw new NotSupportedException("Agent containment and ordered event/call diagrams own their layouts.");
         ById(engineId).Apply(model, options ?? LayoutOptions.Default);
+    }
 }
 
 /// <summary>Helpers every engine needs.</summary>

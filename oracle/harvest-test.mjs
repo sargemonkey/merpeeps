@@ -39,7 +39,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const repo = resolve(import.meta.dirname, '..');
-const cli = join(repo, 'src', 'Merpeeps.Cli', 'bin', 'Release', 'net10.0', 'merpeeps.dll');
+const cli = process.env.MERPEEPS_TEST_CLI
+  ?? join(repo, 'src', 'Merpeeps.Cli', 'bin', 'Release', 'net10.0', 'merpeeps.dll');
 // Reads the gate's own fixture, not docs/styled-sample.mmd. That file is what
 // the editor opens by default, so anyone trying the app out edits it — which
 // silently changed the diagram under three gates and failed them on code that
@@ -274,14 +275,17 @@ if (adopted) {
   note(!replay.error && replay.errors.length === 0,
     'the replay page rendered without error', replay.error ?? replay.errors[0]);
 
-  // No page should carry an ELK bundle any more, whatever it was asked for.
-  // Checked on bytes rather than by looking for the word: mermaid's own source
-  // mentions elk in a deprecation notice, so a text match would fire on a page
-  // that is entirely clean.
+  // Mermaid 12 bundles its own ELK. Check our extra module graph rather than a
+  // fixed byte budget, which would mistake upstream growth for another plugin.
   const replayHtml = readFileSync(join(work, 'replay.html'), 'utf8');
-  note(replayHtml.length < 4_500_000,
-    'the replay page does not carry a layout plugin bundle',
-    `${(replayHtml.length / 1024 / 1024).toFixed(1)} MB`);
+  const onlyReplayModules = html => {
+    const names = [...html.matchAll(/\bSOURCES\.set\(['"]([^'"]+)['"]/g)].map(m => m[1]).sort();
+    return JSON.stringify(names) === JSON.stringify(['./index.js', './rendered-geometry.js', '__plugin', 'js-yaml']);
+  };
+  note(onlyReplayModules(replayHtml),
+    'the replay page embeds only the expected Merpeeps modules, no extra layout plugin');
+  note(!onlyReplayModules(replayHtml + "\nSOURCES.set('extra-layout', 'test');"),
+    'control: a separately embedded layout module is detected');
 
   if (replay.harvest) {
     // Against the coordinates we wrote, not against the earlier harvest. The

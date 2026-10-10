@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">Merpie icon mark</title>
+  <desc id="description">A flying magpie with a white wing flash, a purple feather streak, and a broad split mermaid tail.</desc>
+  <g stroke="#0E0B1A" stroke-linejoin="round">
+    <path id="mermaid-fin" fill="#5B2BFF" stroke-width="12" d="M211 265C240 274 259 293 278 317C294 341 307 344 326 333C354 312 379 305 404 315C423 322 436 337 444 355C422 350 407 356 393 369C380 382 366 388 350 386C354 408 362 428 384 440C353 445 325 438 307 417C285 392 285 366 269 345C253 326 231 316 211 311Z"/>
+    <path id="bird" fill="#0E0B1A" stroke="none" d="M57 216L87 203C98 179 126 175 146 188L176 217C187 188 208 167 235 150C279 124 310 102 323 61C338 96 316 137 289 164C310 154 326 139 339 121C347 156 320 181 293 196C309 194 325 183 338 170C338 207 303 230 258 232L224 232C235 255 247 270 253 293C235 310 211 318 187 313C150 306 125 285 112 256L98 229Z"/>
+    <path id="white-breast" fill="#FFFFFF" stroke="none" d="M148 233C137 245 143 266 160 280C177 294 198 300 219 299L234 292C225 273 213 259 207 244C188 252 168 253 148 233Z"/>
+    <path id="wing-flash" fill="#FFFFFF" stroke="none" d="M181 229C195 197 219 177 250 158C273 144 293 129 306 113C292 151 260 176 239 190L256 183C244 205 225 219 204 224Z"/>
+    <path id="purple-feather-streak" fill="#7950FF" stroke="none" d="M254 147C281 128 302 104 315 79C318 109 293 136 267 152Z"/>
+    <path id="beak" fill="#7950FF" stroke="none" d="M59 216L87 205L96 219Z"/>
+    <circle id="eye" cx="119" cy="206" r="7" fill="#FFFFFF" stroke="none"/>
+    <circle cx="121" cy="206" r="4" fill="#0E0B1A" stroke="none"/>
+  </g>
+</svg>

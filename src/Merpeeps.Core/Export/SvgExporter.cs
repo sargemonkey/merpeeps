@@ -29,7 +29,7 @@ namespace Merpeeps.Core.Export;
 /// wrapping is approximated — the exporter has no font metrics — so a label is
 /// laid out on the same simple rule the canvas uses.</para>
 /// </remarks>
-public static class SvgExporter
+public static partial class SvgExporter
 {
     private const double Pad = 24;
     private const double FontSize = 14;
@@ -48,8 +48,48 @@ public static class SvgExporter
     /// A mermaid theme name for the colours of unstyled nodes, or null for the
     /// exporter's own neutral defaults.
     /// </param>
-    public static string ToSvg(DiagramModel model, string? theme = null)
+    /// <param name="evaluationContext">Required for Gantt: the host-captured reference instant and timezone.</param>
+    public static string ToSvg(DiagramModel model, string? theme = null, GanttEvaluationContext? evaluationContext = null)
     {
+        Parsing.DiagramAdapters.ForModel(model);
+        if (model.Sequence is not null) return SequenceSvg(model, theme);
+        if (model.Chart is not null) return DrawingSceneSvg.Write(Layout.ChartDiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.Outline is not null || model.Temporal is not null)
+            return DrawingSceneSvg.Write(Layout.DataDiagramLayouts.Create(model, themeOverride: theme).Scene);
+        if (model.Packet is not null || model.Kanban is not null)
+            return DrawingSceneSvg.Write(Layout.BoardPacketLayout.Create(model, themeOverride: theme));
+        if (model.Requirements is not null)
+            return DrawingSceneSvg.Write(Layout.RequirementDiagramLayout.Create(model, themeOverride: theme));
+        if (model.GitDiagram is not null)
+            return DrawingSceneSvg.Write(Layout.GitDiagramLayout.Create(model, themeOverride: theme));
+        if (model.Sankey is not null || model.Treemap is not null)
+            return DrawingSceneSvg.Write(Layout.WeightedDiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.Blocks is not null) return DrawingSceneSvg.Write(Layout.BlockDiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.Architecture is not null) return DrawingSceneSvg.Write(Layout.ArchitectureDiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.C4 is not null) return DrawingSceneSvg.Write(Layout.C4DiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.Gantt is not null) return DrawingSceneSvg.Write(Layout.GanttDiagramLayout.Create(model,
+            evaluationContext ?? throw new ArgumentException("Gantt export requires an explicit reference clock and timezone."), themeOverride: theme).Scene);
+        if (model.Wardley is not null) return DrawingSceneSvg.Write(Layout.StrategyDiagramLayouts.Wardley(model, themeOverride: theme).Scene);
+        if (model.Ishikawa is not null) return DrawingSceneSvg.Write(Layout.StrategyDiagramLayouts.Ishikawa(model, themeOverride: theme).Scene);
+        if (model.Cynefin is not null) return DrawingSceneSvg.Write(Layout.StrategyDiagramLayouts.Cynefin(model, themeOverride: theme).Scene);
+        if (model.Venn is not null) return DrawingSceneSvg.Write(Layout.VennDiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.Railroad is not null) return DrawingSceneSvg.Write(Layout.RailroadDiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.Swimlane is not null) return DrawingSceneSvg.Write(Layout.SwimlaneDiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.UseCase is not null) return DrawingSceneSvg.Write(Layout.UseCaseDiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.AgentFlow is not null) return DrawingSceneSvg.Write(Layout.AgentFlowDiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.EventModeling is not null) return DrawingSceneSvg.Write(Layout.EventModelingLayout.Create(model, themeOverride: theme).Scene);
+        if (model.Zen is not null) return DrawingSceneSvg.Write(Layout.ZenDiagramLayout.Create(model, themeOverride: theme).Scene);
+        if (model.ClassOptions is not null)
+        {
+            var diagnostics = model.Nodes.SelectMany(n => ClassDiagramStyle.Resolve(n).Diagnostics).Distinct().ToArray();
+            if (diagnostics.Length != 0)
+                throw new NotSupportedException("Native class SVG cannot represent: " + string.Join(" ", diagnostics));
+        }
+        if (model.EntityOptions is not null)
+        {
+            var diagnostics = model.Nodes.SelectMany(n => EntityDiagramStyle.Resolve(n).Diagnostics).Distinct().ToArray();
+            if (diagnostics.Length != 0) throw new NotSupportedException("Native ER SVG cannot represent: " + string.Join(" ", diagnostics));
+        }
         var palette = Palette.For(theme ?? model.Theme);
 
         // The extent of everything drawn, so the viewBox fits the diagram rather
@@ -58,11 +98,41 @@ public static class SvgExporter
         var minY = model.Nodes.Count > 0 ? model.Nodes.Min(n => n.Y) : 0;
         var maxX = model.Nodes.Count > 0 ? model.Nodes.Max(n => n.X + n.Width) : 100;
         var maxY = model.Nodes.Count > 0 ? model.Nodes.Max(n => n.Y + n.Height) : 100;
+        if (model.Subgraphs.Count > 0)
+        {
+            var rectangles = model.Subgraphs.Where(g => GraphGroupGeometry.IsVisible(model, g)).Select(g => GraphGroupGeometry.Bounds(model, g));
+            foreach (var rectangle in rectangles)
+            {
+                minX = Math.Min(minX, rectangle.X); minY = Math.Min(minY, rectangle.Y);
+                maxX = Math.Max(maxX, rectangle.X + rectangle.Width); maxY = Math.Max(maxY, rectangle.Y + rectangle.Height);
+            }
+        }
+        if (model.EntityOptions is not null)
+        {
+            foreach (var point in model.Edges.SelectMany(e => EntityDiagramGeometry.Route(model, e)))
+            {
+                minX = Math.Min(minX, point.X); minY = Math.Min(minY, point.Y);
+                maxX = Math.Max(maxX, point.X); maxY = Math.Max(maxY, point.Y);
+            }
+        }
+        else if (model.ClassOptions is null)
+            foreach (var point in model.Edges.SelectMany(e => GraphEdgeGeometry.Route(model, e)))
+            {
+                minX = Math.Min(minX, point.X); minY = Math.Min(minY, point.Y);
+                maxX = Math.Max(maxX, point.X); maxY = Math.Max(maxY, point.Y);
+            }
 
-        var w = maxX - minX + Pad * 2;
-        var h = maxY - minY + Pad * 2;
-        var dx = Pad - minX;
-        var dy = Pad - minY;
+        var padding = model.ClassOptions is null ? Pad : Pad + 36 * Math.Max(1, model.Subgraphs.Count);
+        if (model.RenderedGeometry?.Caption is { } caption)
+            foreach (var line in caption.Lines)
+            {
+                minX = Math.Min(minX, line.Bounds.X); minY = Math.Min(minY, line.Bounds.Y);
+                maxX = Math.Max(maxX, line.Bounds.X + line.Bounds.Width); maxY = Math.Max(maxY, line.Bounds.Y + line.Bounds.Height);
+            }
+        var w = maxX - minX + padding * 2;
+        var h = maxY - minY + padding * 2;
+        var dx = padding - minX;
+        var dy = padding - minY;
 
         var sb = new StringBuilder();
         sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -80,10 +150,35 @@ public static class SvgExporter
 
         sb.Append($"  <rect width=\"100%\" height=\"100%\" fill=\"{palette.Background}\"/>\n");
         sb.Append($"  <g transform=\"translate({N(dx)},{N(dy)})\">\n");
+        if (model.RenderedGeometry?.Caption is { } captionLabel) WriteRenderedText(sb, captionLabel, palette.MutedText);
 
         // Edges first, so a node covers the stub of a line that reaches it.
-        foreach (var edge in model.Edges) WriteEdge(sb, model, edge, palette);
-        foreach (var node in model.Nodes) WriteNode(sb, node, palette);
+        if (model.ClassOptions is not null)
+        {
+            WriteClassNamespaces(sb, model, palette);
+            foreach (var edge in model.Edges) WriteClassEdge(sb, model, edge, palette);
+            foreach (var node in model.Nodes) WriteClassNode(sb, model, node, palette);
+        }
+        else if (model.EntityOptions is not null)
+        {
+            WriteEntityGroups(sb, model, palette);
+            foreach (var edge in model.Edges) WriteEntityEdge(sb, model, edge, palette);
+            foreach (var node in model.Nodes) WriteEntityNode(sb, node, palette);
+        }
+        else
+        {
+            foreach (var group in model.Subgraphs)
+            {
+                var bounds = GraphGroupGeometry.Bounds(model, group);
+                var imported = model.RenderedGeometry?.Groups.GetValueOrDefault(group.Id);
+                sb.Append($"<g data-subgraph=\"{Esc(group.Id)}\"><rect x=\"{N(bounds.X)}\" y=\"{N(bounds.Y)}\" width=\"{N(bounds.Width)}\" height=\"{N(bounds.Height)}\" fill=\"{Esc(imported?.Fill ?? "none")}\" stroke=\"{Esc(imported?.Stroke ?? palette.NodeStroke)}\" stroke-width=\"{N(imported?.StrokeWidth ?? 1)}\"/>\n");
+                if (model.RenderedGeometry?.GroupLabel(model, group) is { } label) WriteRenderedText(sb, label, palette.MutedText);
+                else WriteLabel(sb, group.Title ?? group.Id, bounds.X + 10, bounds.Y + 16, palette.MutedText, "start");
+                sb.Append("</g>\n");
+            }
+            foreach (var edge in model.Edges) WriteEdge(sb, model, edge, palette);
+            foreach (var node in model.Nodes) WriteNode(sb, node, palette, model.RenderedGeometry?.NodeLabel(model, node));
+        }
 
         sb.Append("  </g>\n");
         sb.Append("</svg>\n");
@@ -92,7 +187,7 @@ public static class SvgExporter
 
     // ------------------------------------------------------------------ nodes
 
-    private static void WriteNode(StringBuilder sb, DiagramNode n, Palette p)
+    private static void WriteNode(StringBuilder sb, DiagramNode n, Palette p, RenderedText? renderedLabel = null)
     {
         var fill = n.Fill ?? p.NodeFill;
         var stroke = n.Stroke ?? p.NodeStroke;
@@ -106,7 +201,8 @@ public static class SvgExporter
         var hasIcon = IconGeometry.For(n.Icon).Count > 0;
         var text = n.TextColor ?? Ink(fill);
 
-        if (hasIcon)
+        if (renderedLabel is not null) WriteRenderedText(sb, renderedLabel, text);
+        else if (hasIcon)
         {
             // Glyph on the left, label beside it — the arrangement the canvas
             // uses, so an exported diagram matches the one on screen.
@@ -250,8 +346,10 @@ public static class SvgExporter
         if (a is null || b is null) return;
         if (e.Kind == EdgeKind.Invisible) return;
 
-        var (ax, ay) = Border(a, Centre(b));
-        var (bx, by) = Border(b, Centre(a));
+        var route = GraphEdgeGeometry.Route(m, e);
+        if (route.Count < 2) return;
+        var ax = route[0].X; var ay = route[0].Y;
+        var bx = route[^1].X; var by = route[^1].Y;
 
         var dash = e.Kind is EdgeKind.Dotted or EdgeKind.DottedArrow
             ? " stroke-dasharray=\"5,4\"" : "";
@@ -259,14 +357,17 @@ public static class SvgExporter
         var head = e.Kind is EdgeKind.Open or EdgeKind.Dotted
             ? "" : " marker-end=\"url(#arrow)\"";
 
-        sb.Append($"    <line x1=\"{N(ax)}\" y1=\"{N(ay)}\" x2=\"{N(bx)}\" y2=\"{N(by)}\" ");
+        if (route.Count == 2) sb.Append($"    <line x1=\"{N(ax)}\" y1=\"{N(ay)}\" x2=\"{N(bx)}\" y2=\"{N(by)}\" ");
+        else sb.Append($"    <polyline points=\"{string.Join(" ", route.Select(point => $"{N(point.X)},{N(point.Y)}"))}\" fill=\"none\" ");
         sb.Append($"stroke=\"{p.Edge}\" stroke-width=\"{N(width)}\"{dash}{head}/>\n");
 
+        if (m.RenderedGeometry?.EdgeLabel(m, e) is { } label) { WriteRenderedText(sb, label, p.MutedText); return; }
         if (!string.IsNullOrEmpty(e.Label))
         {
             const double LabelSize = 12;
-            var mx = (ax + bx) / 2;
-            var my = (ay + by) / 2;
+            var center = GraphEdgeGeometry.LabelPoint(route);
+            var mx = center.X;
+            var my = center.Y;
 
             // Sized from the label's own font size, not the node one. Using the
             // larger figure made the backing box noticeably wider than its text
@@ -311,6 +412,18 @@ public static class SvgExporter
     }
 
     // ------------------------------------------------------------------- text
+
+    private static void WriteRenderedText(StringBuilder sb, RenderedText text, string ink)
+    {
+        if (text.Background is { } background && text.Lines.Count > 0)
+        {
+            var left = text.Lines.Min(l => l.Bounds.X); var top = text.Lines.Min(l => l.Bounds.Y);
+            var right = text.Lines.Max(l => l.Bounds.X + l.Bounds.Width); var bottom = text.Lines.Max(l => l.Bounds.Y + l.Bounds.Height);
+            sb.Append($"<rect x=\"{N(left - 3)}\" y=\"{N(top - 2)}\" width=\"{N(right - left + 6)}\" height=\"{N(bottom - top + 4)}\" fill=\"{Esc(background)}\"/>\n");
+        }
+        foreach (var line in text.Lines)
+            sb.Append($"<text x=\"{N(line.Bounds.X + line.Bounds.Width / 2)}\" y=\"{N(line.Bounds.Y)}\" text-anchor=\"middle\" dominant-baseline=\"text-before-edge\" font-family=\"{Esc(text.FontFamily)}\" font-size=\"{N(text.FontSize)}\" font-weight=\"{text.FontWeight}\" fill=\"{Esc(ink)}\">{Esc(line.Text)}</text>\n");
+    }
 
     private static void WriteLabel(
         StringBuilder sb, string text, double x, double y, string colour, string anchor)

@@ -31,6 +31,7 @@ try
     return cmd switch
     {
         "read" => Read(rest),
+        "capabilities" => Capabilities(rest),
         "describe" => Describe(rest),
         "validate" => Validate(rest),
         "strip" => Strip(rest),
@@ -47,6 +48,10 @@ try
         _ => Fail($"unknown command '{cmd}'"),
     };
 }
+catch (UnsupportedDiagramException ex)
+{
+    return Fail(ex.Message);
+}
 catch (Exception ex)
 {
     Console.Error.WriteLine($"merpeeps: {ex.Message}");
@@ -60,19 +65,21 @@ static int Usage()
 
         inspect
           merpeeps read <file>                 print the Merpeeps block as JSON
+          merpeeps capabilities <file>         report native support without parsing the body
           merpeeps describe <file>             structure as JSON, without the body
           merpeeps describe <file> --positions   ... including stored coordinates
-          merpeeps validate <file>...          check invariants (exit 1 on failure)
+          merpeeps validate <file>...          check metadata invariants (not Mermaid syntax)
 
         change
           merpeeps edit <file> --ops <json|file|->   apply operations
           merpeeps layout <file> [--engine <id>]     arrange, and store the result
           merpeeps adopt <file> --positions <json>   freeze supplied coordinates in
+          merpeeps adopt <file> --geometry <json>    adopt rendered Flowchart dimensions, groups, labels and routes
           merpeeps layout-engines              list the engines, as JSON
 
         `edit`, `layout`, `adopt` and `strip` print the result to stdout and
-        leave your file alone. Add --write to edit it in place, or --out <path>
-        to write elsewhere. Commands that discard work should be asked for.
+        leave your file alone. Add --write to edit it in place. `edit`, `layout`
+        and `adopt` also support --out <path> to write elsewhere.
 
         export
           merpeeps strip <file>                print the plain mermaid to stdout
@@ -117,6 +124,14 @@ static int Read(string[] a)
     return 0;
 }
 
+static int Capabilities(string[] a)
+{
+    if (a.Length != 1) return Fail("capabilities requires one file");
+    var capabilities = MerpeepsDocument.GetCapabilities(File.ReadAllText(a[0]));
+    Console.WriteLine(JsonSerializer.Serialize(capabilities, CliJson.Default.DiagramCapabilities));
+    return 0;
+}
+
 /// <summary>
 /// Report a diagram's structure without reproducing the diagram.
 ///
@@ -137,6 +152,27 @@ static int Describe(string[] a)
     if (!File.Exists(files[0])) return Fail($"no such file: {files[0]}");
 
     var model = MerpeepsDocument.Load(File.ReadAllText(files[0]));
+    if (DiagramStructure.DescribeData(model) is { } data)
+    {
+        Console.WriteLine(MerpeepsDoc.ToJson(data));
+        return 0;
+    }
+    if (model.Sequence is { } sequence)
+    {
+        var statements = SequenceDiagramModel.Walk(sequence.Statements).ToArray();
+        var report = new SequenceDescribeDto(
+            model.Kind, sequence.Participants.Count, statements.OfType<SequenceMessage>().Count(),
+            sequence.Participants.Select(p => new SequenceParticipantDto(p.Id, p.Display, p.Kind.ToString(), p.Shape.ToString(), p.BoxId)).ToArray(),
+            statements.Select(s =>
+            {
+                var location = SequenceEditing.Locate(sequence, s.Id);
+                return new SequenceStatementDto(s.Id, s.GetType().Name, location.ParentBranchId, location.Index,
+                    s is SequenceMessage m ? m.From : null, s is SequenceMessage n ? n.To : null,
+                    s switch { SequenceMessage message => message.Text, SequenceNote note => note.Text, SequenceBlock block => block.Text, _ => null });
+            }).ToArray());
+        Console.WriteLine(JsonSerializer.Serialize(report, CliJson.Default.SequenceDescribeDto));
+        return 0;
+    }
 
     var summary = new DescribeDto(
         Kind: model.Kind,
@@ -290,6 +326,8 @@ static int Layout(string[] a)
     if (!File.Exists(files[0])) return Fail($"no such file: {files[0]}");
 
     var source = File.ReadAllText(files[0]);
+    if (MerpeepsDocument.GetCapabilities(source) is { CanEdit: true, CanLayout: false })
+        return Fail("This diagram uses ordered semantic layout, not graph layout engines.");
     var model = MerpeepsDocument.Load(source);
 
     // Fall back to the engine the file last used, so re-running the command
@@ -459,7 +497,8 @@ static int Svg(string[] a)
     if (!File.Exists(files[0])) return Fail($"no such file: {files[0]}");
 
     var source = File.ReadAllText(files[0]);
-    var svg = SvgExporter.ToSvg(MerpeepsDocument.Load(source), theme);
+    var model = MerpeepsDocument.Load(source);
+    var svg = SvgExporter.ToSvg(model, theme, model.Gantt is null ? null : new GanttEvaluationContext(DateTimeOffset.Now, TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture));
 
     if (outPath is null) Console.Out.Write(svg);
     else
@@ -497,8 +536,12 @@ static int Svg(string[] a)
 /// </summary>
 static int Adopt(string[] a)
 {
+    var geometryIndex = Array.IndexOf(a, "--geometry");
     var posIndex = Array.FindIndex(a, x => x is "--positions" or "-p");
-    if (posIndex < 0) return Fail("adopt requires --positions <file|-> ");
+    if (geometryIndex >= 0 && posIndex >= 0) return Fail("--geometry and --positions are alternatives");
+    var fullGeometry = geometryIndex >= 0;
+    if (fullGeometry) posIndex = geometryIndex;
+    if (posIndex < 0) return Fail("adopt requires --positions <file|-> or --geometry <file|->");
     if (posIndex + 1 >= a.Length) return Fail("--positions requires a path, or - for stdin");
     var posArg = a[posIndex + 1];
 
@@ -526,11 +569,26 @@ static int Adopt(string[] a)
     if (!File.Exists(files[0])) return Fail($"no such file: {files[0]}");
 
     var json = posArg == "-" ? Console.In.ReadToEnd() : File.ReadAllText(posArg);
+    if (fullGeometry)
+    {
+        var source = File.ReadAllText(files[0]);
+        var graph = MerpeepsDocument.Load(source);
+        var command = new AdoptRenderedGeometryCommand(graph, RenderedGraphGeometry.Parse(json));
+        command.Do(graph);
+        var written = MerpeepsDocument.SavePositions(source, graph);
+        if (inPlace) File.WriteAllText(files[0], written);
+        else if (outPath is null) Console.Out.Write(written);
+        else File.WriteAllText(outPath, written);
+        Console.Error.WriteLine($"merpeeps: adopted rendered geometry for {command.NodeCount} nodes");
+        return 0;
+    }
     var harvest = HarvestReader.Parse(json);
     if (harvest.Count == 0) return Fail("no usable positions in the harvest");
 
     var src = File.ReadAllText(files[0]);
     var model = MerpeepsDocument.Load(src);
+    if (model.Sequence is not null || model.Chart is not null || model.Outline is not null || model.Temporal is not null || model.Packet is not null || model.Kanban is not null)
+        return Fail("This diagram uses family-specific geometry; graph coordinate adoption does not apply.");
 
     var applied = 0;
     foreach (var node in model.Nodes)
@@ -547,7 +605,7 @@ static int Adopt(string[] a)
     // SavePositions, not Save: naming the method is the request. `Save` only
     // writes a layout block if one was already there, which is right for a
     // structural edit and wrong here — freezing coordinates is the whole point.
-    var result = MerpeepsDocument.SavePositions(src, model);
+    var result = MerpeepsDocument.SavePositions(src, model, writeDimensions: false);
 
     if (inPlace) File.WriteAllText(files[0], result);
     else if (outPath is null) Console.Out.Write(result);
@@ -651,18 +709,15 @@ static int Bake(string[] a)
     if (!File.Exists(files[0])) return Fail($"no such file: {files[0]}");
 
     var result = MermaidBake.Bake(File.ReadAllText(files[0]));
+    if (result.UnsupportedKind is { } unsupportedKind)
+        return Fail(result.Diagnostic ?? $"This build cannot bake '{unsupportedKind}'.");
 
     // Collect diagnostics first and emit them after the document. Writing them
     // as we go lets stderr interleave into the middle of stdout when both go to
     // a terminal, which shredded a `style` line in testing.
     var notes = new List<string>();
 
-    if (result.UnsupportedKind is { } kind)
-    {
-        notes.Add($"'{kind}' has no `style` statement in its grammar, so nothing could be baked. " +
-                  "The plain diagram is unchanged.");
-    }
-    else if (result.StyledNodes.Count > 0)
+    if (result.StyledNodes.Count > 0)
     {
         notes.Add($"baked styling for {result.StyledNodes.Count} node(s) into the body");
     }
@@ -716,12 +771,17 @@ static int Validate(string[] files)
         if (!ok) bad++;
         Console.WriteLine(
             $"{(ok ? "PASS" : "FAIL")}  {f}  body={body} idempotent={idem} roundTrip={trip}");
+        var capabilities = MerpeepsDocument.GetCapabilities(src);
+        Console.WriteLine("      metadata invariants only; Mermaid syntax was not checked.");
+        Console.WriteLine(capabilities.CanRenderNatively
+            ? $"      native editing/layout/SVG supported for family '{capabilities.Kind}' (parser subset)."
+            : $"      {capabilities.Diagnostic}");
 
         // SPEC §6b: a reader SHOULD surface packs it cannot resolve. This is
         // reported, never counted as a failure — a document that names a pack
         // this machine happens to lack is perfectly valid, and treating it as
         // broken would punish the author for the reader's missing tooling.
-        var wanted = IconVocabulary.PacksReferencedBy(MerpeepsDocument.Load(src));
+        var wanted = IconVocabulary.PacksReferencedByMetadata(merpeeps);
         if (wanted.Count > 0)
         {
             Console.WriteLine(
@@ -799,6 +859,12 @@ internal sealed record DescribeDto(
     IReadOnlyList<DescribeLinkDto> Links,
     IReadOnlyList<DescribeSubgraphDto> Subgraphs);
 
+internal sealed record SequenceParticipantDto(string Id, string Label, string Kind, string Shape, string? BoxId);
+internal sealed record SequenceStatementDto(string Id, string Kind, string? ParentBranchId, int Index, string? From, string? To, string? Text);
+internal sealed record SequenceDescribeDto(
+    string Kind, int ParticipantCount, int MessageCount,
+    IReadOnlyList<SequenceParticipantDto> Participants, IReadOnlyList<SequenceStatementDto> Statements);
+
 internal sealed record EngineDto(string Id, string Name, string Description);
 
 internal sealed record EngineListDto(
@@ -813,6 +879,8 @@ internal sealed record EngineListDto(
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(DescribeDto))]
+[JsonSerializable(typeof(SequenceDescribeDto))]
 [JsonSerializable(typeof(EngineListDto))]
+[JsonSerializable(typeof(DiagramCapabilities))]
 [JsonSerializable(typeof(List<DiagramOperation>))]
 internal partial class CliJson : JsonSerializerContext;

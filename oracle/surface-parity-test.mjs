@@ -23,6 +23,7 @@ if (!CLI || !DLL) {
 // the tool name as advertised over stdio.
 const CAPABILITIES = [
   { what: 'read the metadata',    cli: 'read',           mcp: 'merpeeps_read_metadata' },
+  { what: 'inspect capabilities', cli: 'capabilities',   mcp: 'merpeeps_capabilities' },
   { what: 'describe structure',   cli: 'describe',       mcp: 'merpeeps_describe' },
   { what: 'check invariants',     cli: 'validate',       mcp: 'merpeeps_validate' },
   { what: 'remove the metadata',  cli: 'strip',          mcp: 'merpeeps_strip' },

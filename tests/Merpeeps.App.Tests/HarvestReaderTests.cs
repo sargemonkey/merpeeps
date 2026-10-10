@@ -158,7 +158,7 @@ public class HarvestReaderTests
         var start = html.IndexOf("window.merpeepsHarvest", StringComparison.Ordinal);
         Assert.True(start > 0, "the harvest entry point is missing");
 
-        var end = html.IndexOf("window.merpeepsReady", start, StringComparison.Ordinal);
+        var end = html.IndexOf("\nconst geometryModule", start, StringComparison.Ordinal);
         Assert.True(end > start, "could not delimit the harvest function");
 
         var harvest = html[start..end];

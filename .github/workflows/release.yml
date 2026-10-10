@@ -1,0 +1,164 @@
+name: Merpie draft release
+
+on:
+  push:
+    tags: ['merpie-v*-preview.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing validated prerelease tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+concurrency:
+  group: merpie-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  desktop:
+    name: Verify and package ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-24.04
+            rid: linux-x64
+          - os: macos-15
+            rid: osx-arm64
+          - os: macos-15-intel
+            rid: osx-x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate tag and all package versions
+        run: |
+          $info = ./scripts/get-release-info.ps1 -Tag $env:RELEASE_TAG
+          "VERSION=$($info.desktop)" >> $env:GITHUB_ENV
+          git rev-parse HEAD
+      - name: Native-host source and UI regression suites
+        run: ./scripts/test-release-source.ps1
+      - name: Runtime-bundled desktop and MCP binaries
+        run: |
+          dotnet publish src/Merpeeps.App -c Release -r '${{ matrix.rid }}' --self-contained true -o artifacts/publish/app
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet publish src/Merpeeps.Mcp -c Release -r '${{ matrix.rid }}' --self-contained true -o artifacts/publish/mcp
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Package and verify platform metadata, runtime and checksums
+        run: |
+          $package = ./scripts/package-desktop.ps1 -AppPublishPath artifacts/publish/app -McpPublishPath artifacts/publish/mcp -RuntimeIdentifier '${{ matrix.rid }}' -OutputDirectory artifacts/desktop -Version $env:VERSION -SelfContained
+          ./scripts/test-desktop-package.ps1 -PackagePath $package.Package -ArchivePath $package.Archive
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.rid }}
+          path: |
+            artifacts/desktop/*.zip
+            artifacts/desktop/*.tar.gz
+            artifacts/desktop/*.sha256
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-evidence-${{ matrix.rid }}
+          path: artifacts/release-tests/*
+
+  packages:
+    name: Actual NuGet and npm consumers
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: ./scripts/get-release-info.ps1 -Tag $env:RELEASE_TAG
+      - name: Pack shared NuGet libraries without registry uploads
+        run: |
+          foreach ($project in 'Core', 'Render', 'Scene') {
+            dotnet pack "src/Merpeeps.$project" -c Release -o artifacts/packages
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+      - name: Clean package consumers, 33 families and 48 dialects
+        run: ./scripts/test-package-consumer.ps1 -PackageDirectory artifacts/packages -WorkDirectory artifacts/packed-consumer
+      - name: Test and pack the JavaScript companion
+        run: |
+          npm ci --prefix packages/merpeeps-mermaid-layout --no-audit --no-fund
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm test --prefix packages/merpeeps-mermaid-layout
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node oracle/package-consumer-test.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm pack ./packages/merpeeps-mermaid-layout --pack-destination artifacts/packages
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+            artifacts/packages/*.tgz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-evidence
+          path: artifacts/packed-consumer/family-results.json
+
+  draft:
+    name: Create draft prerelease only
+    needs: [desktop, packages]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: artifacts/release
+      - name: Create immutable draft attachments from the validated tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          $info = ./scripts/get-release-info.ps1 -Tag $env:RELEASE_TAG
+          $repo = $env:GITHUB_REPOSITORY
+          $existing = gh api "repos/$repo/releases/tags/$env:RELEASE_TAG" 2>$null
+          if ($LASTEXITCODE -eq 0) { throw 'A release already exists; refusing to overwrite its assets or state.' }
+          $sha = git rev-parse HEAD
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $files = @(Get-ChildItem artifacts/release -File | Sort-Object Name)
+          $checksums = $files | ForEach-Object { "$((Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant())  $($_.Name)" }
+          [IO.File]::WriteAllLines("$PWD/artifacts/release/SHA256SUMS", $checksums, [Text.UTF8Encoding]::new($false))
+          [IO.File]::WriteAllText("$PWD/artifacts/release/SOURCE_COMMIT.txt", "$sha`n", [Text.UTF8Encoding]::new($false))
+          $assets = @(Get-ChildItem artifacts/release -File | ForEach-Object { $_.FullName })
+          gh release create $env:RELEASE_TAG --repo $repo --verify-tag --draft --prerelease --title "Merpie $($info.desktop)" --notes-file deployment/release-notes.md @assets
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

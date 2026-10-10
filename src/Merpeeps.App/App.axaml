@@ -1,8 +1,30 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fluent="using:Avalonia.Themes.Fluent"
              x:Class="Merpeeps.App.App"
              RequestedThemeVariant="Default">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://Merpie.App/Themes/AmplifyResources.axaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
     <Application.Styles>
-        <FluentTheme />
+        <FluentTheme>
+            <FluentTheme.Palettes>
+                <fluent:ColorPaletteResources x:Key="Light" Accent="#5B2BFF"
+                    RegionColor="#FFFFFF" AltHigh="#FFFFFF" AltLow="#FFFFFF" AltMedium="#F6F5FA"
+                    BaseHigh="#0E0B1A" BaseMediumHigh="#262138" BaseMedium="#5C5573" BaseMediumLow="#8B84A3" BaseLow="#D8D4E2"
+                    ChromeAltLow="#FFFFFF" ChromeLow="#F6F5FA" ChromeMediumLow="#EBE9F1" ChromeMedium="#D8D4E2"
+                    ChromeHigh="#5C5573" ChromeGray="#5C5573" ListLow="#F1EDFF" ListMedium="#E0D7FF" ErrorText="#BE1F27"/>
+                <fluent:ColorPaletteResources x:Key="Dark" Accent="#A48CFF"
+                    RegionColor="#191527" AltHigh="#0E0B1A" AltLow="#191527" AltMedium="#262138"
+                    BaseHigh="#FFFFFF" BaseMediumHigh="#EBE9F1" BaseMedium="#B6B0C7" BaseMediumLow="#8B84A3" BaseLow="#3B3550"
+                    ChromeAltLow="#0E0B1A" ChromeLow="#191527" ChromeMediumLow="#262138" ChromeMedium="#3B3550"
+                    ChromeHigh="#B6B0C7" ChromeGray="#B6B0C7" ListLow="#262138" ListMedium="#3B3550" ErrorText="#FF8A8E"/>
+            </FluentTheme.Palettes>
+        </FluentTheme>
+        <StyleInclude Source="avares://Merpie.App/Themes/AmplifyStyles.axaml"/>
     </Application.Styles>
 </Application>

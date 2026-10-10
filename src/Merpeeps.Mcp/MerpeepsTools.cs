@@ -19,11 +19,25 @@ namespace Merpeeps.Mcp;
 [McpServerToolType]
 public static class MerpeepsTools
 {
-    private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
+    private static readonly JsonSerializerOptions Json = new()
+        { WriteIndented = false, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly JsonSerializerOptions Lenient =
         new() { PropertyNameCaseInsensitive = true };
 
     // ------------------------------------------------------------- reading
+
+    [McpServerTool(Name = "merpeeps_capabilities")]
+    [Description("Report the diagram family and native editing, layout and SVG support. " +
+                 "Does not validate Mermaid syntax. Metadata operations are available for all families.")]
+    public static string Capabilities(
+        [Description("Absolute path to the diagram source file")] string path)
+    {
+        if (!File.Exists(path)) return Err($"file not found: {path}");
+        return JsonSerializer.Serialize(new
+        {
+            ok = true, capabilities = MerpeepsDocument.GetCapabilities(File.ReadAllText(path)),
+        }, Json);
+    }
 
     [McpServerTool(Name = "merpeeps_describe")]
     [Description("Summarise a diagram's structure (nodes, links, counts) WITHOUT " +
@@ -35,7 +49,35 @@ public static class MerpeepsTools
         bool includePositions = false)
     {
         if (!File.Exists(path)) return Err($"file not found: {path}");
-        var model = MerpeepsDocument.Load(File.ReadAllText(path));
+        var source = File.ReadAllText(path);
+        if (NativeError(source) is { } error) return error;
+        var model = MerpeepsDocument.Load(source);
+
+        if (DiagramStructure.DescribeData(model) is { } data) return MerpeepsDoc.ToJson(data);
+        if (model.Sequence is { } sequence)
+            return JsonSerializer.Serialize(new
+            {
+                ok = true, kind = model.Kind, participantCount = sequence.Participants.Count,
+                messageCount = Core.Model.SequenceDiagramModel.Walk(sequence.Statements).OfType<Core.Model.SequenceMessage>().Count(),
+                participants = sequence.Participants.Select(p => new { p.Id, label = p.Display, kind = p.Kind.ToString(), shape = p.Shape.ToString(), p.BoxId }),
+                statements = Core.Model.SequenceDiagramModel.Walk(sequence.Statements).Select(s =>
+                {
+                    var location = SequenceEditing.Locate(sequence, s.Id);
+                    return new
+                    {
+                        s.Id, kind = s.GetType().Name, location.ParentBranchId, location.Index,
+                        from = s is Core.Model.SequenceMessage m ? m.From : null,
+                        to = s is Core.Model.SequenceMessage n ? n.To : null,
+                        text = s switch
+                        {
+                            Core.Model.SequenceMessage message => message.Text,
+                            Core.Model.SequenceNote note => note.Text,
+                            Core.Model.SequenceBlock block => block.Text,
+                            _ => null,
+                        },
+                    };
+                }),
+            }, Json);
 
         var nodes = model.Nodes.Select(n => includePositions
             ? (object)new { id = n.Id, label = n.Display, shape = n.Shape.ToString(),
@@ -117,6 +159,7 @@ public static class MerpeepsTools
         if (dtos is null || dtos.Count == 0) return Err("no operations supplied");
 
         var source = File.ReadAllText(path);
+        if (NativeError(source) is { } error) return error;
         var model = MerpeepsDocument.Load(source);
         var history = new EditHistory(model);
 
@@ -201,6 +244,9 @@ public static class MerpeepsTools
                        string.Join(", ", Core.Layout.LayoutEngines.Available.Select(e => e.Id)));
 
         var source = File.ReadAllText(path);
+        if (NativeError(source) is { } error) return error;
+        if (!MerpeepsDocument.GetCapabilities(source).CanLayout)
+            return Err("This diagram uses ordered semantic layout, not graph layout engines.");
         var model = MerpeepsDocument.Load(source);
 
         var chosen = Core.Layout.LayoutEngines.ById(
@@ -296,8 +342,10 @@ public static class MerpeepsTools
     {
         if (!File.Exists(path)) return Err($"file not found: {path}");
 
-        var model = MerpeepsDocument.Load(File.ReadAllText(path));
-        var svg = SvgExporter.ToSvg(model, theme);
+        var source = File.ReadAllText(path);
+        if (NativeError(source) is { } error) return error;
+        var model = MerpeepsDocument.Load(source);
+        var svg = SvgExporter.ToSvg(model, theme, model.Gantt is null ? null : new Core.Model.GanttEvaluationContext(DateTimeOffset.Now, TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture));
 
         var target = outPath ?? Path.ChangeExtension(path, ".svg");
         File.WriteAllText(target, svg);
@@ -330,7 +378,9 @@ public static class MerpeepsTools
     {
         if (!File.Exists(path)) return Err($"file not found: {path}");
 
-        var result = MermaidBake.Bake(File.ReadAllText(path));
+        var source = File.ReadAllText(path);
+        if (NativeError(source) is { } error) return error;
+        var result = MermaidBake.Bake(source);
         if (outPath is not null) File.WriteAllText(outPath, result.Output);
 
         // Loss is reported node by node rather than as a count, so an agent can
@@ -345,6 +395,7 @@ public static class MerpeepsTools
             droppedIcons = result.DroppedIcons,
             droppedPositions = result.DroppedPositions,
             unsupportedKind = result.UnsupportedKind,
+            diagnostic = result.Diagnostic,
         }, Json);
     }
 
@@ -365,8 +416,8 @@ public static class MerpeepsTools
     }
 
     [McpServerTool(Name = "merpeeps_validate")]
-    [Description("Check Merpeeps invariants for a file: round-trip fidelity, " +
-                 "idempotence, and that the diagram body is preserved.")]
+    [Description("Check metadata invariants: round-trip fidelity, idempotence and body preservation. " +
+                 "A PASS does not validate Mermaid syntax or imply native rendering/editing support.")]
     public static string Validate(
         [Description("Absolute path to the file")] string path)
     {
@@ -387,6 +438,9 @@ public static class MerpeepsTools
         {
             ok = checks.Where(c => c.Key != "hasMerpeeps").All(c => c.Value),
             checks,
+            scope = "metadata",
+            syntaxValidated = false,
+            capabilities = MerpeepsDocument.GetCapabilities(source),
         }, Json);
     }
 
@@ -397,6 +451,43 @@ public static class MerpeepsTools
 
     private static string Err(string message) =>
         JsonSerializer.Serialize(new { ok = false, error = message }, Json);
+
+    private static string? NativeError(string source)
+    {
+        var capabilities = MerpeepsDocument.GetCapabilities(source);
+        if (capabilities.Kind == "sequenceDiagram")
+        {
+            try
+            {
+                var result = new Core.Parsing.SequenceDiagramAdapter().ReadSource(source);
+                if (!result.CanEdit)
+                    return JsonSerializer.Serialize(new
+                    {
+                        ok = false,
+                        error = "Native sequence authoring cannot represent this document.",
+                        diagnostics = result.Diagnostics.Select(d => new { d.Code, d.ElementId, d.Message, kind = d.Kind.ToString() }),
+                        capabilities = capabilities with { CanEdit = false, CanRenderNatively = false },
+                    }, Json);
+            }
+            catch (FormatException error) { return Err(error.Message); }
+        }
+        else if (capabilities.CanEdit && !capabilities.CanLayout)
+        {
+            try { _ = MerpeepsDocument.Load(source); }
+            catch (Core.Model.ChartNotEditableException error)
+            {
+                return JsonSerializer.Serialize(new { ok = false, error = error.Message, diagnostics = error.Result.Diagnostics }, Json);
+            }
+            catch (Core.Model.DataDiagramNotEditableException error)
+            {
+                return JsonSerializer.Serialize(new { ok = false, error = error.Message, diagnostics = error.Diagnostics }, Json);
+            }
+            catch (Exception error) when (error is ArgumentException or FormatException or InvalidOperationException)
+            { return Err("Native diagram interpretation failed: " + error.Message); }
+        }
+        return capabilities.CanEdit ? null : JsonSerializer.Serialize(
+            new { ok = false, error = capabilities.Diagnostic, capabilities }, Json);
+    }
 
     /// <summary>Wire format for an operation; kept out of the core.</summary>
     public sealed class OperationDto
@@ -419,4 +510,3 @@ public static class MerpeepsTools
         };
     }
 }
-

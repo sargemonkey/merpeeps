@@ -22,7 +22,8 @@ import { join, resolve } from 'node:path';
 
 const repo = resolve(import.meta.dirname, '..');
 const here = import.meta.dirname;
-const cli = join(repo, 'src', 'Merpeeps.Cli', 'bin', 'Release', 'net10.0', 'merpeeps.dll');
+const cli = process.env.MERPEEPS_TEST_CLI
+  ?? join(repo, 'src', 'Merpeeps.Cli', 'bin', 'Release', 'net10.0', 'merpeeps.dll');
 // Reads the gate's own fixture, not docs/styled-sample.mmd. That file is what
 // the editor opens by default, so anyone trying the app out edits it — which
 // silently changed the diagram under three gates and failed them on code that

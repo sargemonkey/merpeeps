@@ -104,7 +104,11 @@ public sealed class ColourWheel : Control
         if (radius <= 0) return;
 
         var side = (int)Math.Ceiling(radius * 2);
-        if (_bitmap is null || _bitmapSize != side) _bitmap = BuildWheel(side);
+        if (_bitmap is null || _bitmapSize != side)
+        {
+            _bitmap?.Dispose();
+            _bitmap = BuildWheel(side);
+        }
         _bitmapSize = side;
 
         var box = new Rect(cx - radius, cy - radius, radius * 2, radius * 2);
@@ -178,6 +182,13 @@ public sealed class ColourWheel : Control
     /// in to check the painting itself.
     /// </remarks>
     internal static WriteableBitmap BuildWheelForTest(int side) => BuildWheel(side);
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _bitmap?.Dispose();
+        _bitmap = null;
+        base.OnDetachedFromVisualTree(e);
+    }
 
     /// <summary>
     /// Scale a channel by alpha, because the bitmap is premultiplied.

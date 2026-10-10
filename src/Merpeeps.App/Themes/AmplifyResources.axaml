@@ -1,0 +1,39 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Amplify product UI: flat volt/ink. Document colors are not app resources. -->
+  <FontFamily x:Key="AmplifyUiFont">avares://Merpie.App/Assets/Fonts/InstrumentSans-var.ttf#Instrument Sans</FontFamily>
+  <FontFamily x:Key="AmplifyDisplayFont">avares://Merpie.App/Assets/Fonts/Archivo-var.ttf#Archivo</FontFamily>
+  <FontFamily x:Key="AmplifyMonoFont">avares://Merpie.App/Assets/Fonts/IBMPlexMono.ttf#IBM Plex Mono</FontFamily>
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="AmplifySurfaceBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="AmplifyCanvasBrush" Color="#F6F5FA"/>
+      <SolidColorBrush x:Key="AmplifyInputBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="AmplifyTextBrush" Color="#0E0B1A"/>
+      <SolidColorBrush x:Key="AmplifyMutedBrush" Color="#5C5573"/>
+      <SolidColorBrush x:Key="AmplifyBorderBrush" Color="#D8D4E2"/>
+      <SolidColorBrush x:Key="AmplifyHairlineBrush" Color="#EBE9F1"/>
+      <SolidColorBrush x:Key="AmplifyAccentBrush" Color="#5B2BFF"/>
+      <SolidColorBrush x:Key="AmplifyAccentSoftBrush" Color="#F1EDFF"/>
+      <SolidColorBrush x:Key="AmplifyDangerBrush" Color="#BE1F27"/>
+      <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="ThemeControlMidBrush" Color="#F6F5FA"/>
+      <SolidColorBrush x:Key="ThemeBorderLowBrush" Color="#D8D4E2"/>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="AmplifySurfaceBrush" Color="#191527"/>
+      <SolidColorBrush x:Key="AmplifyCanvasBrush" Color="#0E0B1A"/>
+      <SolidColorBrush x:Key="AmplifyInputBrush" Color="#0E0B1A"/>
+      <SolidColorBrush x:Key="AmplifyTextBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="AmplifyMutedBrush" Color="#B6B0C7"/>
+      <SolidColorBrush x:Key="AmplifyBorderBrush" Color="#3B3550"/>
+      <SolidColorBrush x:Key="AmplifyHairlineBrush" Color="#262138"/>
+      <SolidColorBrush x:Key="AmplifyAccentBrush" Color="#A48CFF"/>
+      <SolidColorBrush x:Key="AmplifyAccentSoftBrush" Color="#302448"/>
+      <SolidColorBrush x:Key="AmplifyDangerBrush" Color="#FF8A8E"/>
+      <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="#191527"/>
+      <SolidColorBrush x:Key="ThemeControlMidBrush" Color="#262138"/>
+      <SolidColorBrush x:Key="ThemeBorderLowBrush" Color="#3B3550"/>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

@@ -121,6 +121,18 @@ public class ReferencePaneTests
         Assert.Equal(stamp, new FileInfo(second.LocalPath).Length);
     }
 
+    [Fact]
+    public void CachedShellIsNotRewrittenWhileAWebEngineMapsIt()
+    {
+        var uri = ReferenceRenderPane.ShellUri(RenderAssets.Mode.Stock, false);
+        using var mapped = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateFromFile(
+            uri.LocalPath, FileMode.Open, null, 0, System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read);
+        using var view = mapped.CreateViewAccessor(0, 0, System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read);
+        var modified = File.GetLastWriteTimeUtc(uri.LocalPath);
+        Assert.Equal(uri, ReferenceRenderPane.ShellUri(RenderAssets.Mode.Stock, false));
+        Assert.Equal(modified, File.GetLastWriteTimeUtc(uri.LocalPath));
+    }
+
     /// <summary>
     /// The Merpeeps shell must carry the published plugin; the stock one must not.
     /// Getting this backwards would make the comparison meaningless while still

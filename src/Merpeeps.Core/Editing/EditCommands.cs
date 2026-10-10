@@ -83,6 +83,11 @@ public sealed class AddNodeCommand(DiagramNode node) : IEditCommand
     public void Do(DiagramModel m)
     {
         if (m.Node(node.Id) is not null) return;
+        if (m.ClassOptions is not null && node.Class is null)
+        {
+            node.Class = new ClassNodeDefinition();
+            node.Shape = NodeShape.Rectangle;
+        }
 
         // The editor supplies a drop point; an agent supplies none, and every
         // node it adds would otherwise pile up on the origin, on top of
@@ -110,6 +115,7 @@ public sealed class DeleteNodesCommand(IEnumerable<DiagramNode> nodes) : IEditCo
     private readonly List<(DiagramEdge Edge, int Index)> _edges = new();
     private readonly List<(DiagramNode Node, int Index)> _nodeIndices = new();
     private readonly List<(DiagramSubgraph Sg, string Id, int Index)> _members = new();
+    private List<DiagramNode> _removed = new();
 
     public string Description => _nodes.Count == 1
         ? $"Delete {_nodes[0].Id}" : $"Delete {_nodes.Count} nodes";
@@ -118,6 +124,17 @@ public sealed class DeleteNodesCommand(IEnumerable<DiagramNode> nodes) : IEditCo
     {
         _edges.Clear(); _nodeIndices.Clear(); _members.Clear();
         var ids = _nodes.Select(n => n.Id).ToHashSet();
+        _removed = _nodes.ToList();
+        if (m.ClassOptions is not null)
+        {
+            foreach (var dependent in m.Nodes.Where(n =>
+                n.Class is { Kind: ClassNodeKind.Note, NoteFor: { } target } && ids.Contains(target) ||
+                n.Class?.Kind == ClassNodeKind.Lollipop && m.Edges.Any(e =>
+                    e.From == n.Id && ids.Contains(e.To) || e.To == n.Id && ids.Contains(e.From))).ToArray())
+            {
+                if (ids.Add(dependent.Id)) _removed.Add(dependent);
+            }
+        }
 
         for (var i = m.Edges.Count - 1; i >= 0; i--)
         {
@@ -133,7 +150,7 @@ public sealed class DeleteNodesCommand(IEnumerable<DiagramNode> nodes) : IEditCo
                     _members.Add((sg, sg.NodeIds[i], i));
                     sg.NodeIds.RemoveAt(i);
                 }
-        foreach (var n in _nodes)
+        foreach (var n in _removed)
         {
             var idx = m.Nodes.IndexOf(n);
             if (idx < 0) continue;
@@ -156,21 +173,37 @@ public sealed class DeleteNodesCommand(IEnumerable<DiagramNode> nodes) : IEditCo
 public sealed class AddEdgeCommand(DiagramEdge edge) : IEditCommand
 {
     public string Description => $"Connect {edge.From} to {edge.To}";
-    public void Do(DiagramModel m) => m.Edges.Add(edge);
+    public void Do(DiagramModel m)
+    {
+        if (m.ClassOptions is not null)
+        {
+            edge.ClassRelationship ??= new ClassRelationship();
+            AddClassRelationshipCommand.Validate(m, edge, edge.ClassRelationship);
+        }
+        m.Edges.Add(edge);
+    }
     public void Undo(DiagramModel m) => m.Edges.Remove(edge);
 }
 
 public sealed class DeleteEdgeCommand(DiagramEdge edge) : IEditCommand
 {
     private int _index = -1;
+    private DeleteClassRelationshipCommand? _classDelete;
     public string Description => $"Delete link {edge.From}->{edge.To}";
     public void Do(DiagramModel m)
     {
+        if (m.ClassOptions is not null)
+        {
+            _classDelete = new(edge);
+            _classDelete.Do(m);
+            return;
+        }
         _index = m.Edges.IndexOf(edge);
         if (_index >= 0) m.Edges.RemoveAt(_index);
     }
     public void Undo(DiagramModel m)
     {
+        if (_classDelete is not null) { _classDelete.Undo(m); return; }
         if (_index >= 0) m.Edges.Insert(Math.Min(_index, m.Edges.Count), edge);
     }
 }
@@ -178,9 +211,22 @@ public sealed class DeleteEdgeCommand(DiagramEdge edge) : IEditCommand
 public sealed class RenameNodeCommand(DiagramNode node, string? label) : IEditCommand
 {
     private string? _prev;
+    private string? _reference;
     public string Description => $"Rename {node.Id}";
-    public void Do(DiagramModel m) { _prev = node.Label; node.Label = label; }
-    public void Undo(DiagramModel m) => node.Label = _prev;
+    public void Do(DiagramModel m)
+    {
+        _prev = node.Label;
+        _reference = node.Class?.ReferenceName;
+        if (node.Class?.Kind == ClassNodeKind.Lollipop && string.IsNullOrWhiteSpace(label))
+            throw new ArgumentException("An interface occurrence needs a name.", nameof(label));
+        node.Label = label;
+        if (node.Class?.Kind == ClassNodeKind.Lollipop) node.Class.ReferenceName = label;
+    }
+    public void Undo(DiagramModel m)
+    {
+        node.Label = _prev;
+        if (node.Class?.Kind == ClassNodeKind.Lollipop) node.Class.ReferenceName = _reference;
+    }
 }
 
 /// <summary>Set or clear the label on a link.</summary>

@@ -14,7 +14,8 @@ const PORT = Number(process.env.MERPEEPS_GEN_PORT ?? 8897);
 const MIME = { '.html': 'text/html', '.mjs': 'text/javascript',
                '.js': 'text/javascript', '.json': 'application/json' };
 
-const cases = JSON.parse(await readFile(join(ROOT, 'generated-cases.json'), 'utf8'));
+const cases = JSON.parse(await readFile(
+  process.env.MERPEEPS_GENERATED_CASES ?? join(ROOT, 'generated-cases.json'), 'utf8'));
 
 const server = await new Promise((resolve) => {
   const s = createServer(async (req, res) => {

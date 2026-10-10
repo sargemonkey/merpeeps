@@ -20,7 +20,7 @@ $ErrorActionPreference = 'Stop'
 
 $repo = Split-Path -Parent $PSScriptRoot
 $src = Join-Path $repo 'oracle\node_modules\mermaid'
-$dest = Join-Path $repo 'src\Merpeeps.App\Assets\vendor\mermaid'
+$dest = Join-Path $repo 'src\Merpeeps.Render\Assets\vendor\mermaid'
 
 if (-not (Test-Path $src)) {
     throw "mermaid not found at $src. Run 'npm ci' in oracle/ first."

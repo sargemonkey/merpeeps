@@ -1,0 +1,46 @@
+internal static class Fixtures
+{
+    public static string Source(string family, string directive) => family switch
+    {
+        "flowchart" => directive + " LR\nsubgraph Team[Team]\nA[Alpha] --> B{Beta}\nend\nB --> C[Gamma]\n",
+        "state" => directive + "\nstate Group {\nA --> B\n}\n[*] --> Group\nGroup --> Done\n",
+        "class" => directive + "\nnamespace Domain {\nclass Account {\n+String name\n+save() bool\n}\nclass Order\n}\nAccount \"1\" --> \"*\" Order : owns\nnote for Account \"Keep history\"\n",
+        "er" => directive + "\nsubgraph Sales\nCUSTOMER {\n int id PK\n string name\n}\nsubgraph Billing\nORDER {\n int id PK\n}\nend\nend\nsubgraph Empty\nend\nCUSTOMER ||--o{ ORDER : places\n",
+        "sequence" => directive + "\nbox Services\nparticipant A as Client\nparticipant B as Service\nend\nA->>+B: Request\nalt Allowed\nB->>A: Result\nelse Denied\nNote over A,B: No access\nend\nB-->>-A: Response\n",
+        "journey" => directive + "\nsection Work\nLearn: 3: User\nBuild: 5: User, Team\n",
+        "gantt" => directive + "\nsection Build\nImplement :a,2026-01-05,2d\nVerify :b,after a,1d\n",
+        "pie" => directive + "\n\"Alpha\":30\n\"Beta\":20\n\"Zero\":0\n\"Gamma\":50\n",
+        "quadrant" => directive + "\nquadrant-1 High\nquadrant-2 Next\nquadrant-3 Low\nquadrant-4 Later\nA: [0.25,0.25]\nB: [0.75,0.7]\n",
+        "requirement" => directive + "\nrequirement Payment {\nid: 1\ntext: Must work\nrisk: high\nverifymethod: test\n}\nelement App {\ntype: application\n}\nApp - satisfies -> Payment\n",
+        "git" => directive + "\ncommit id:\"A\"\nbranch dev\ncommit id:\"B\"\ncheckout main\ncommit id:\"C\"\nmerge dev\n",
+        "c4" => directive + "\nContainer_Boundary(g,\"Application\") {\nContainer(a,\"API\",\"C#\",\"Requests\")\nContainerDb(b,\"Data\",\"SQL\")\n}\nPerson(p,\"User\")\nRel(p,a,\"Uses\")\nRel(a,b,\"Reads\")\n",
+        "mindmap" => directive + "\nRoot\n  A[Alpha]\n    Child[Child]\n  B((Beta))\n",
+        "timeline" => directive + "\nsection Early\nPast : First : Second\nsection Later\nNow : Third\nNext : Fourth\n",
+        "sankey" => directive + "\nPower,Industry,3\nPower,Homes,1\n",
+        "xy" => directive + "\nx-axis [A,B,C]\ny-axis \"Value\" -10 --> 20\nline [2,10,4]\nbar [4,6,8]\n",
+        "block" => directive + "\ncolumns 3\nA[\"First\"] space B[\"Second\"]\nblock:group:2\ncolumns 2\nC D\nend\nE\nA --> B\n",
+        "packet" => directive + "\n+16: \"Header\"\n+40: \"Payload\"\n",
+        "kanban" => directive + "\ntodo[Todo]\n  task[Implement]\ndone[Done]\n  verified[Verified]\n",
+        "architecture" => directive + "\ngroup api(cloud)[API]\nservice db(database)[Database] in api\nservice app(server)[Application] in api\njunction hub in api\ndb:R --> L:app\n",
+        "radar" => directive + "\naxis A,B,C\ncurve Team{2,4,3}\n",
+        "treemap" => directive + "\n\"Budget\"\n  \"Staff\": 3\n  \"Tools\": 1\n",
+        "venn" => directive + "\nset A[\"Design\"]:20\nset B[\"Engineering\"]:12\nunion A,B[\"Product\"]:3\n  text t[\"Research\"]\n",
+        "wardley" => directive + "\ncomponent Parent [0.8,0.6]\npipeline Parent {\ncomponent Child [0.2]\n}\ncomponent Service [0.3,0.8]\nParent -> Service\nannotation 1,[0.5,0.5] \"Review\"\n",
+        "ishikawa" => directive + "\nProblem\nEquipment\n  Lens\nUser\n  Training\n",
+        "cynefin" => directive + "\ncomplex\n\"Experiment\"\nclear\n\"Procedure\"\ncomplex --> clear : \"Learned\"\n",
+        "railroad" => directive switch
+        {
+            "railroad-ebnf-beta" => directive + "\nrule = \"a\" (\"b\" | \"c\") ;\n",
+            "railroad-abnf-beta" => directive + "\nrule = \"a\" / \"b\" ;\n",
+            "railroad-peg-beta" => directive + "\nrule <- \"a\" / \"b\" ;\n",
+            _ => directive + "\nrule = sequence(terminal(\"a\"), optional(terminal(\"b\"))) ;\n",
+        },
+        "swimlane" => directive + " LR\nsubgraph Team[Support]\nA[Receive request]\nend\nsubgraph Review[Review team]\nB{Approved?}\nend\nA -->|Handoff| B\n",
+        "usecase" => directive + "\ndirection LR\nactor User(\"Customer\")\nsystemBoundary App[\"Application\"]@{type:package}\nLogin(\"Sign in\")\nCheck(\"Verify session\")\nend\nUser --> Login\nLogin ..> : include Check\nnote for User \"Account owner\"\n",
+        "agentflow" => directive + " LR\ninput[\"Request\"]@{ shape: input }\nflow work[\"Review agent\"]\ncheck[\"Review\"]@{ shape: task }\ntool[\"Check policy\"]@{ shape: tool }\ncheck --> tool\nend\ninput --> work\n",
+        "eventmodeling" => directive + "\ntf 01 ui CartUI\ntf 02 cmd AddItem { description: string }\ntf 03 evt ItemAdded\n",
+        "treeview" => directive + "\nRoot/\n  A/\n    Leaf.txt\n  B.txt\n",
+        "zenuml" => directive + "\n@Actor Client\nClient->Service.load() {\n DB.query()\n return result\n}\n",
+        _ => throw new ArgumentException(family),
+    };
+}

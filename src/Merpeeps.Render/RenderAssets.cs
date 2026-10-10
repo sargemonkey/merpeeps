@@ -74,9 +74,17 @@ public static class RenderAssets
     {
         ["js-yaml"] = YamlRes,
         ["./index.js"] = IndexRes,
+        ["./rendered-geometry.js"] = "Merpeeps.Render.Assets.rendered-geometry.js",
     };
 
     public static string MermaidBundle => Text(MermaidRes);
+    public static string MermaidVersion => Text("Merpeeps.Render.Assets.mermaid.version").Trim();
+    public static string ZenUmlBundle => Text("Merpeeps.Render.Assets.zenuml.js");
+    public static string ZenUmlVersion => Text("Merpeeps.Render.Assets.zenuml.version").Trim();
+    public static string ZenUmlLicence => Text("Merpeeps.Render.Assets.zenuml.LICENSE");
+    public static string ZenUmlThirdPartyNotices => Text("Merpeeps.Render.Assets.zenuml.NOTICES");
+    internal static string ZenUmlValidationScript => Text("Merpeeps.Render.Assets.zenuml-validation.js");
+    internal static string ValidationScript => Text("Merpeeps.Render.Assets.validation.js");
     public static string MermaidLicence => Text("Merpeeps.Render.Assets.mermaid.LICENSE");
     public static string JsYamlLicence => Text("Merpeeps.Render.Assets.js-yaml.LICENSE");
     public static string MerpeepsIndex => Text(IndexRes);
@@ -222,20 +230,20 @@ public static class RenderAssets
         // 'merpeeps' is not a mermaid layout name — the plugin registers and
         // selects it itself — so it is never passed through as config.
         var configLayout = layout is null || layout.Equals("merpeeps", StringComparison.OrdinalIgnoreCase)
-            ? null
+            ? "dagre"
             : layout;
 
         sb.Append("mermaid.initialize({ startOnLoad: false, theme: ")
           .Append(dark ? "'dark'" : "'default'");
-        if (configLayout is not null) sb.Append(", layout: ").Append(JsLiteral(configLayout));
-        sb.Append(" });\n\n");
+        sb.Append(", layout: ").Append(JsLiteral(configLayout));
+        sb.Append(", look: 'classic' });\n\n");
 
 
         if (mode == Mode.WithMerpeeps)
         {
             sb.Append("const SOURCES = new Map();\n");
-            sb.Append("SOURCES.set('js-yaml', ").Append(JsLiteral(Text(YamlRes))).Append(");\n");
-            sb.Append("SOURCES.set('./index.js', ").Append(JsLiteral(MerpeepsIndex)).Append(");\n");
+            foreach (var (specifier, resource) in ModuleGraph)
+                sb.Append("SOURCES.set(").Append(JsLiteral(specifier)).Append(", ").Append(JsLiteral(Text(resource))).Append(");\n");
             sb.Append("SOURCES.set('__plugin', ").Append(JsLiteral(MerpeepsPlugin)).Append(");\n\n");
 
             sb.Append("""
@@ -375,6 +383,10 @@ public static class RenderAssets
 
             """);
 
+        sb.Append("\nconst geometryModule = await import(");
+        if (mode == Mode.WithMerpeeps) sb.Append("moduleUrl('./rendered-geometry.js')");
+        else sb.Append("URL.createObjectURL(new Blob([").Append(JsLiteral(Text("Merpeeps.Render.Assets.rendered-geometry.js"))).Append("], {type:'text/javascript'}))");
+        sb.Append(");\nwindow.merpeepsHarvestGeometry = async () => JSON.stringify(geometryModule.harvestRenderedGeometry(stage.querySelector('svg'), RENDER_ID));\n");
         sb.Append("\n\nwindow.merpeepsReady = true;\n");
         return sb.ToString();
     }

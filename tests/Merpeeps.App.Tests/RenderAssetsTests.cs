@@ -168,6 +168,16 @@ public class RenderAssetsTests
         Assert.Contains(dark ? "theme: 'dark'" : "theme: 'default'", html, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(RenderAssets.Mode.Stock)]
+    [InlineData(RenderAssets.Mode.WithMerpeeps)]
+    public void UpstreamUpgradeDoesNotChangeDefaultReferenceAppearance(RenderAssets.Mode mode)
+    {
+        var html = RenderAssets.BuildShell(mode, dark: false);
+        Assert.Contains("layout: \"dagre\"", html, StringComparison.Ordinal);
+        Assert.Contains("look: 'classic'", html, StringComparison.Ordinal);
+    }
+
     // ------------------------------------------------------------- escaping
 
     /// <summary>

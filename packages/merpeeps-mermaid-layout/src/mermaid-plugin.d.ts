@@ -30,8 +30,9 @@ export declare function registerMerpeepsLayout<T extends MermaidLike>(mermaid: T
  * Render `text`, honouring any positions and styling stored in its Merpeeps block.
  *
  * Falls through to `mermaid.render` when the document stores no positions, or
- * when it uses subgraphs, so the result is never worse than stock mermaid.
- * Stored styling is applied on either path.
+ * when it uses subgraphs without an explicit rendered snapshot.
+ * An explicit snapshot replays imported geometry, rejecting stale/incompatible
+ * content or arrangements. Stored styling is applied on either path.
  */
 export declare function renderWithLayout(
   mermaid: MermaidLike,

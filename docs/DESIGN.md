@@ -1,4 +1,4 @@
-# Why Merpeeps is built this way
+# Why Merpie is built this way
 
 The reasoning behind the design, and the things that were **measured rather than
 assumed** — several of which turned out to contradict what the documentation
@@ -24,6 +24,41 @@ Because `@{}` is flowchart-only, the carrier is **frontmatter** (`x-merpeeps`), 
 `%% merpeeps1 {...}` fallback for pipelines that strip frontmatter.
 
 ## Layout
+
+### Native editor identity
+
+The desktop product is **Merpie**, using the approved flying sea-magpie: original
+detailed head/eye and feather-streaked raised wing, combined with the broad split
+mermaid fin. `Assets/Brand` is the locked artwork source for the native workspace,
+gallery, About window and deployment icons. `ProductBrand` loads those resources;
+`MerpieMascot` selects a dark-surface keyline variant without recoloring them.
+The app icon's fixed pale backplate keeps the silhouette readable at small sizes
+on either system theme. No additional illustration or palette redesign is implied.
+
+The GUI assembly/executable is `Merpie.App`, while source paths/namespaces,
+CLI/MCP IDs, `x-merpeeps` metadata and shared package/library names are retained.
+`EditorLauncher` prefers the new name but supports previous executables and
+overrides. Release packaging is branded Merpie across Windows ZIP, Linux desktop
+entry/launcher and macOS `.app` bundle; it does not perform an installation.
+
+The native shell now follows the user-selected **Amplify Studio** UI model:
+white/mist (`#FFFFFF`, `#F6F5FA`) or ink (`#191527`, `#0E0B1A`) surfaces, flat
+volt (`#5B2BFF` / `#A48CFF`) selection and action accents, and restrained borders.
+`Themes/AmplifyResources.axaml` and `Themes/AmplifyStyles.axaml` own these app
+resources. Bundled Instrument Sans, Archivo and IBM Plex Mono carry their SIL
+Open Font License notices under `Assets/Fonts`.
+
+The left rail contains pictures, not lists of creation verbs. Its outline view
+reads canonical family models and selects the same objects as the canvas.
+The right pane keeps the primary name field visible and secondary settings
+behind a sliders control. Icons retain descriptive automation names and
+tooltips. The source pane remains opt-in. No DevSanity wordmark, decorative
+gradient, or AI capability is implied by adopting the kit.
+
+App resources do not become document styling. Explicit diagram colors and
+source are preserved; canvas selection chrome uses the app accent. Tests
+exercise every catalog family/dialect, real pointer creation and selection,
+inline property edits, outline navigation, and theme changes without history.
 
 ```
 src/
@@ -197,6 +232,24 @@ most-upvoted layout request ([#3723](https://github.com/mermaid-js/mermaid/issue
 Coordinates are not deprecated — nothing else reproduces a hand-dragged
 arrangement. They are demoted to the escape hatch, written only when explicitly
 asked for. See SPEC §6c.
+
+### Reversible graph gestures and container geometry
+
+Node and group drags preview a reversible command captured before movement.
+Each pointer update restores the previous preview before applying the next one;
+release records exactly one command, while Escape, capture loss or changing
+documents restores the original state without history. Undo includes the
+original `HasExplicitPosition` flags, not just coordinates.
+
+`GraphGroupGeometry` shares container membership and bounds between interaction
+and drawing. A group translation includes descendants and Class attachments.
+Populated frames derive from their members; empty frames use the optional
+`layout.groups` map. Source adapters retain nested Flowchart/State parent links
+so translation does not omit a subgroup.
+
+Typed scene hit regions follow drawing order: container backgrounds, relationship
+segments, then child nodes. Reverse hit testing therefore selects a visible link
+inside a container without stealing a click from a node above it.
 
 ## Running on Windows, Linux and macOS
 

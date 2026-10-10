@@ -10,6 +10,10 @@ namespace Merpeeps.Core;
 /// </summary>
 public static class MerpeepsDocument
 {
+    /// <summary>Report family-level capabilities without parsing or validating the diagram body.</summary>
+    public static DiagramCapabilities GetCapabilities(string source) =>
+        DiagramAdapters.GetCapabilities(source);
+
     /// <summary>
     /// Parse <paramref name="source"/>, apply any stored Merpeeps positions, and lay
     /// out whatever is left over. The diagram type is detected automatically.
@@ -24,7 +28,9 @@ public static class MerpeepsDocument
         // manual arrangement is never overwritten on open. New nodes added to
         // the text since the last save are laid out with whichever engine the
         // document last used, so they land somewhere consistent with the rest.
-        if (model.Nodes.Any(n => !n.HasExplicitPosition))
+        if (model.EntityOptions is not null)
+            EntityDiagramLayout.Apply(model);
+        else if (model.Nodes.Any(n => !n.HasExplicitPosition))
             LayoutEngines.Apply(model, model.LayoutEngine);
 
         return model;
@@ -40,6 +46,8 @@ public static class MerpeepsDocument
     /// </summary>
     public static string Save(string source, DiagramModel model)
     {
+        if (DiagramAdapters.For(source).Kind != DiagramAdapters.ForModel(model).Kind)
+            throw new ArgumentException("The model and source belong to different diagram families.", nameof(model));
         // Patch in place where possible so a rename is a one-token diff rather
         // than a rewrite of every line in the document. Line endings are handled
         // by the writer and the serialiser, each at its own level.
@@ -57,12 +65,15 @@ public static class MerpeepsDocument
     /// Write current node positions and styles into <paramref name="source"/>'s
     /// Merpeeps block. The diagram body is returned byte-for-byte unchanged.
     /// </summary>
-    public static string SavePositions(string source, DiagramModel model)
+    public static string SavePositions(string source, DiagramModel model, bool writeDimensions = true)
     {
+        if (DiagramAdapters.For(source).Kind != DiagramAdapters.ForModel(model).Kind)
+            throw new ArgumentException("The model and source belong to different diagram families.", nameof(model));
         // Naming the method is the request: this always records geometry, even
         // for a document that had none, because that is what the caller asked
         // for.
-        var result = SavePositionsUnchecked(source, model, writeLayout: true);
+        var result = SavePositionsUnchecked(source, model, writeLayout: model.AgentFlow is null && model.EventModeling is null && model.Zen is null && model.Sequence is null && model.Chart is null && model.Outline is null && model.Temporal is null && model.Packet is null && model.Kanban is null && model.Requirements is null && model.GitDiagram is null && model.Sankey is null && model.Treemap is null && model.Blocks is null && model.Architecture is null && model.C4 is null && model.Gantt is null && model.Wardley is null && model.Ishikawa is null && model.Cynefin is null && model.Venn is null && model.Railroad is null && model.Swimlane is null && model.UseCase is null,
+            writeDimensions: writeDimensions);
 
         // Enforce the core promise at the boundary, not just in tests.
         if (MerpeepsDoc.BodyOf(result) != MerpeepsDoc.BodyOf(source))
@@ -73,7 +84,7 @@ public static class MerpeepsDocument
     }
 
     private static string SavePositionsUnchecked(
-        string source, DiagramModel model, bool writeLayout)
+        string source, DiagramModel model, bool writeLayout, bool writeDimensions = true)
     {
         var style = new Dictionary<string, object?>();
         foreach (var n in model.Nodes)
@@ -89,12 +100,86 @@ public static class MerpeepsDocument
         }
 
         var patch = new Dictionary<string, object?> { ["spec"] = 1 };
+        if (model.ClassOptions is not null)
+        {
+            patch["identity"] = new Dictionary<string, object?>
+            {
+                ["classDiagram"] = ClassIdentity.Write(source, model),
+            };
+        }
+        if (model.EntityOptions is not null)
+            patch["identity"] = new Dictionary<string, object?> { ["erDiagram"] = EntityDiagramAdapter.Identity(source, model) };
+        if (model.Sequence is not null)
+            patch["identity"] = new Dictionary<string, object?> { ["sequenceDiagram"] = SequenceDiagramAdapter.Identity(source, model.Sequence) };
+        if (model.Chart is not null)
+            patch["identity"] = new Dictionary<string, object?> { [ChartDiagramAdapter.ConfigurationKey(model.Chart.Family)] = ChartDiagramAdapter.Identity(source, model.Chart) };
+        if (model.Temporal is not null)
+            patch["identity"] = new Dictionary<string, object?> { [model.Temporal.Family == TemporalFamily.Timeline ? "timeline" : "journey"] = TemporalDiagramAdapter.Identity(source, model.Temporal) };
+        if (model.Packet is not null) patch["identity"] = new Dictionary<string, object?> { ["packet"] = PacketDiagramAdapter.Identity(source, model.Packet) };
+        if (model.Kanban is not null) patch["identity"] = new Dictionary<string, object?> { ["kanban"] = KanbanDiagramAdapter.Identity(source, model.Kanban) };
+        if (model.Requirements is not null) patch["identity"] = new Dictionary<string, object?> { ["requirement"] = RequirementDiagramAdapter.Identity(source, model.Requirements) };
+        if (model.GitDiagram is not null) patch["identity"] = new Dictionary<string, object?> { ["gitGraph"] = GitGraphAdapter.Identity(source, model.GitDiagram) };
+        if (model.Sankey is not null) patch["identity"] = new Dictionary<string, object?> { ["sankey"] = SankeyDiagramAdapter.Identity(source, model.Sankey) };
+        if (model.Treemap is not null) patch["identity"] = new Dictionary<string, object?> { ["treemap"] = TreemapDiagramAdapter.Identity(source, model.Treemap) };
+        if (model.Blocks is not null) patch["identity"] = new Dictionary<string, object?> { ["block"] = BlockDiagramAdapter.Identity(source, model.Blocks) };
+        if (model.Architecture is not null) patch["identity"] = new Dictionary<string, object?> { ["architecture"] = ArchitectureDiagramAdapter.Identity(source, model.Architecture) };
+        if (model.C4 is not null) patch["identity"] = new Dictionary<string, object?> { ["c4"] = C4DiagramAdapter.Identity(source, model.C4) };
+        if (model.Gantt is not null) patch["identity"] = new Dictionary<string, object?> { ["gantt"] = GanttDiagramAdapter.Identity(source, model.Gantt) };
+        if (model.Wardley is not null) patch["identity"] = new Dictionary<string, object?> { ["wardley"] = WardleyDiagramAdapter.Identity(source, model.Wardley) };
+        if (model.Ishikawa is not null) patch["identity"] = new Dictionary<string, object?> { ["ishikawa"] = IshikawaDiagramAdapter.Identity(source, model.Ishikawa) };
+        if (model.Cynefin is not null) patch["identity"] = new Dictionary<string, object?> { ["cynefin"] = CynefinDiagramAdapter.Identity(source, model.Cynefin) };
+        if (model.Venn is not null) patch["identity"] = new Dictionary<string, object?> { ["venn"] = VennDiagramAdapter.Identity(source, model.Venn) };
+        if (model.Railroad is not null) patch["identity"] = new Dictionary<string, object?> { ["railroad"] = RailroadDiagramAdapter.Identity(source, model.Railroad) };
+        if (model.Swimlane is not null) patch["identity"] = new Dictionary<string, object?> { ["swimlane"] = SwimlaneDiagramAdapter.Identity(source, model.Swimlane) };
+        if (model.UseCase is not null) patch["identity"] = new Dictionary<string, object?> { ["usecase"] = UseCaseDiagramAdapter.Identity(source, model.UseCase) };
+        if (model.AgentFlow is not null) patch["identity"] = new Dictionary<string, object?> { ["agentflow"] = AgentFlowDiagramAdapter.Identity(source, model.AgentFlow) };
+        if (model.EventModeling is not null) patch["identity"] = new Dictionary<string, object?> { ["eventmodeling"] = EventModelingAdapter.Identity(source, model.EventModeling) };
+        if (model.Zen is not null) patch["identity"] = new Dictionary<string, object?> { ["zenuml"] = ZenDiagramAdapter.Identity(source, model.Zen) };
+        if (model.Outline is not null)
+        {
+            patch["identity"] = new Dictionary<string, object?> { [model.Outline.Family == OutlineFamily.Mindmap ? "mindmap" : "treeView"] = OutlineDiagramAdapter.Identity(source, model.Outline) };
+            var old = MerpeepsDoc.Parse(source) as Dictionary<string, object?>;
+            var oldPositions = (old?.GetValueOrDefault("layout") as Dictionary<string, object?>)?.GetValueOrDefault("outline") as Dictionary<string, object?>;
+            if (model.Outline.Positions.Count > 0 || oldPositions?.Count > 0)
+            {
+                var positions = new Dictionary<string, object?>();
+                if (oldPositions is not null) foreach (var id in oldPositions.Keys) positions[id] = null;
+                foreach (var pair in model.Outline.Positions)
+                    positions[pair.Key] = new Dictionary<string, object?> { ["x"] = pair.Value.X, ["y"] = pair.Value.Y };
+                patch["layout"] = new Dictionary<string, object?> { ["outline"] = positions };
+            }
+        }
 
         // Constraints are written whenever they exist, independently of
         // coordinates. They are the low-coupling half of layout: sparse,
         // relationship-based, and harmless when stale — so unlike a coordinate
         // map there is no reason to withhold them.
         var layoutBlock = new Dictionary<string, object?>();
+        var oldLayout = (MerpeepsDoc.Parse(source) as Dictionary<string, object?>)?.GetValueOrDefault("layout") as Dictionary<string, object?>;
+        if (model.RenderedGeometry is not null) layoutBlock["rendered"] = model.RenderedGeometry.ToMetadata();
+        else if (oldLayout?.GetValueOrDefault("rendered") is not null) layoutBlock["rendered"] = null;
+        var edgeLayouts = model.EdgeWaypoints.ToDictionary(p => p.Key, p => (object?)new Dictionary<string, object?>
+        {
+            ["waypoints"] = p.Value.Select(point => (object?)new List<object?> { point.X, point.Y }).ToList(),
+        });
+        if (oldLayout?.GetValueOrDefault("edges") is Dictionary<string, object?> oldEdges)
+            foreach (var key in oldEdges.Keys.Where(key => model.Edges.Any(e => e.Key == key) && !model.EdgeWaypoints.ContainsKey(key)))
+                edgeLayouts[key] = new Dictionary<string, object?> { ["waypoints"] = null };
+        if (edgeLayouts.Count > 0) layoutBlock["edges"] = edgeLayouts;
+        var oldGroups = oldLayout?.GetValueOrDefault("groups") as Dictionary<string, object?>;
+        if (model.GroupLayouts.Count > 0 || oldGroups?.Count > 0)
+        {
+            var groups = new Dictionary<string, object?>();
+            if (oldGroups is not null)
+                foreach (var id in oldGroups.Keys.Where(id => model.Subgraphs.Any(g => g.Id == id)))
+                    groups[id] = new Dictionary<string, object?> { ["x"] = null, ["y"] = null, ["w"] = null, ["h"] = null };
+            foreach (var (id, frame) in model.GroupLayouts)
+                groups[id] = new Dictionary<string, object?>
+                {
+                    ["x"] = frame.X, ["y"] = frame.Y, ["w"] = frame.Width, ["h"] = frame.Height,
+                };
+            layoutBlock["groups"] = groups;
+        }
 
         if (!model.Constraints.IsEmpty)
         {
@@ -127,8 +212,15 @@ public static class MerpeepsDocument
                     ["x"] = Math.Round(n.X, 2),
                     ["y"] = Math.Round(n.Y, 2),
                 };
-                if (Math.Abs(n.Width - 160) > 0.01) entry["w"] = Math.Round(n.Width, 2);
-                if (Math.Abs(n.Height - 56) > 0.01) entry["h"] = Math.Round(n.Height, 2);
+                if (writeDimensions)
+                {
+                    entry["w"] = Math.Round(n.Width, 2); entry["h"] = Math.Round(n.Height, 2);
+                }
+                if (model.RenderedGeometry is not null)
+                {
+                    entry["x"] = n.X; entry["y"] = n.Y;
+                    if (writeDimensions) { entry["w"] = n.Width; entry["h"] = n.Height; }
+                }
                 nodes[n.Id] = entry;
             }
 
@@ -138,6 +230,13 @@ public static class MerpeepsDocument
             // reopened document keeps using the same one so newly added nodes
             // land consistently.
             layoutBlock["engine"] = model.LayoutEngine ?? "manual";
+        }
+        else if (oldLayout?.GetValueOrDefault("nodes") is Dictionary<string, object?> oldNodes)
+        {
+            var unpinned = model.Nodes.Where(n => !n.HasExplicitPosition && oldNodes.ContainsKey(n.Id)).ToArray();
+            if (unpinned.Length > 0)
+                layoutBlock["nodes"] = unpinned.ToDictionary(n => n.Id,
+                    _ => (object?)new Dictionary<string, object?> { ["x"] = null, ["y"] = null });
         }
 
         if (layoutBlock.Count > 0) patch["layout"] = layoutBlock;
@@ -233,12 +332,50 @@ public static class MerpeepsDocument
                         node.X = x; node.Y = y;
                         node.HasExplicitPosition = true;
                     }
-                    if (TryNum(p, "w", out var w)) node.Width = w;
-                    if (TryNum(p, "h", out var h)) node.Height = h;
+                    if (TryNum(p, "w", out var w))
+                    {
+                        if (!double.IsFinite(w) || w <= 0) throw new FormatException($"Node '{id}' has an invalid stored width.");
+                        node.Width = w; node.HasExplicitSize = true;
+                    }
+                    if (TryNum(p, "h", out var h))
+                    {
+                        if (!double.IsFinite(h) || h <= 0) throw new FormatException($"Node '{id}' has an invalid stored height.");
+                        node.Height = h; node.HasExplicitSize = true;
+                    }
                 }
             }
+            if (Get(layout, "rendered") is Dictionary<string, object?> rendered)
+                model.RenderedGeometry = RenderedGraphGeometry.Parse(MerpeepsDoc.ToJson(rendered));
+            if (Get(layout, "edges") is Dictionary<string, object?> edges)
+                foreach (var (id, raw) in edges)
+                {
+                    if (raw is not Dictionary<string, object?> edge || Get(edge, "waypoints") is not List<object?> points) continue;
+                    var route = points.Select(p =>
+                    {
+                        if (p is not List<object?> xy || xy.Count != 2 ||
+                            !TryNum(new() { ["x"] = xy[0], ["y"] = xy[1] }, "x", out var x) ||
+                            !TryNum(new() { ["x"] = xy[0], ["y"] = xy[1] }, "y", out var y) || !double.IsFinite(x) || !double.IsFinite(y))
+                            throw new FormatException($"Edge '{id}' has an invalid waypoint.");
+                        return new DiagramPoint(x, y);
+                    }).ToArray();
+                    model.EdgeWaypoints[id] = route;
+                }
 
             ReadConstraints(model, Get(layout, "constraints"));
+            if (Get(layout, "groups") is Dictionary<string, object?> groups)
+                foreach (var (id, raw) in groups)
+                {
+                    if (raw is null || !model.Subgraphs.Any(g => g.Id == id)) continue;
+                    if (raw is Dictionary<string, object?> cleared &&
+                        new[] { "x", "y", "w", "h" }.All(key => cleared.GetValueOrDefault(key) is null)) continue;
+                    if (raw is not Dictionary<string, object?> frame ||
+                        !TryNum(frame, "x", out var x) || !double.IsFinite(x) ||
+                        !TryNum(frame, "y", out var y) || !double.IsFinite(y) ||
+                        !TryNum(frame, "w", out var width) || !double.IsFinite(width) || width <= 0 ||
+                        !TryNum(frame, "h", out var height) || !double.IsFinite(height) || height <= 0)
+                        throw new FormatException($"Group layout '{id}' needs finite coordinates and positive dimensions.");
+                    model.GroupLayouts[id] = new(x, y, width, height);
+                }
         }
 
         if (Get(root, "style") is Dictionary<string, object?> style &&

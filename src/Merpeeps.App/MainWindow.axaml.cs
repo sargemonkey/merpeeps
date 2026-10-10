@@ -20,6 +20,8 @@ public partial class MainWindow : Window
     private string? _path;
     private bool _dirty;
     private bool _suppressPanelEvents;
+    private DiagramCapabilities? _capabilities;
+    private bool _openingDiagram;
 
     private static readonly (string Name, NodeShape Shape)[] ShapeChoices =
     {
@@ -32,18 +34,6 @@ public partial class MainWindow : Window
         ("Cylinder", NodeShape.Cylinder),
         ("Subroutine", NodeShape.Subroutine),
         ("Parallelogram", NodeShape.Parallelogram),
-    };
-
-    private static readonly string[] Fills =
-    {
-        "#DAE8FC", "#D5E8D4", "#FFE6CC", "#F8CECC", "#E1D5E7",
-        "#FFF2CC", "#F5F5F5", "#FFFFFF",
-    };
-
-    private static readonly string[] Strokes =
-    {
-        "#6C8EBF", "#82B366", "#D79B00", "#B85450", "#9673A6",
-        "#D6B656", "#666666", "#1A1A1A",
     };
 
     private const string Sample = """
@@ -76,6 +66,8 @@ public partial class MainWindow : Window
             RefreshSource();
             SyncStylingTooltip();
             UpdateStatus();
+            _classInspector?.Refresh();
+            RefreshOutline();
         };
         _canvas.SelectionChanged += (_, _) => { SyncPanel(); UpdateStatus(); };
 
@@ -87,9 +79,29 @@ public partial class MainWindow : Window
         this.FindControl<Button>("RelayoutBtn")!.Click += OnRelayout;
 
         WireMenu(options.Theme);
+        _classInspector = new DiagramInspector(_canvas);
+        _classInspector.PendingEditsChanged += (_, _) => UpdateStatus();
+        _canvas.EntityRenameRequested += (_, _) => _classInspector.EditEntitySelection();
+        _canvas.SequenceEditRequested += (_, _) => _classInspector.EditSequenceSelection();
+        _canvas.ChartEditRequested += (_, _) => _classInspector.EditChartSelection();
+        _canvas.DataEditRequested += (_, _) => _classInspector.EditDataSelection();
+        _canvas.StructuralEditRequested += (_, _) => _classInspector.EditStructuralSelection();
+        _canvas.ChartEditReady = () => !_classInspector.HasPendingEdits;
+        _canvas.StrategyEditReady = () => !_classInspector.HasPendingEdits;
+        this.FindControl<Border>("ClassInspectorHost")!.Child = _classInspector;
+        this.FindControl<Border>("FamilyPaletteHost")!.Child = _classInspector.ItemPalette;
+        Closing += (_, e) =>
+        {
+            if (_classInspector.HasPendingEdits)
+            {
+                e.Cancel = true;
+                CanLeaveInspectorDraft();
+            }
+        };
         WireNodeList();
         WireStylingToggle();
         WireHandToggle();
+        WireCompactWorkspace();
 
         this.FindControl<TextBlock>("HintText")!.Text = CanvasHint;
 
@@ -109,9 +121,9 @@ public partial class MainWindow : Window
             .Select(n => n.Length == 0 ? "(none)" : n).ToList();
         iconBox.SelectionChanged += OnIconChanged;
 
-        BuildSwatches("FillSwatches", Fills,
+        BuildColourField("FillSwatches", "Fill color",
             c => _canvas.ApplyStyle(new StyleNodesCommand.Style(Fill: c)));
-        BuildSwatches("StrokeSwatches", Strokes,
+        BuildColourField("StrokeSwatches", "Outline color",
             c => _canvas.ApplyStyle(new StyleNodesCommand.Style(Stroke: c)));
 
         this.FindControl<CheckBox>("DashedBox")!.IsCheckedChanged += (_, _) =>
@@ -130,100 +142,116 @@ public partial class MainWindow : Window
         Opened += (_, _) =>
         {
             if (options.OpenPath is { } path && File.Exists(path))
+            {
                 LoadSource(File.ReadAllText(path), path);
+                _canvas.Focus();
+            }
             else
-                LoadSource(Sample, null);
-            _canvas.Focus();
+                ShowNewGallery();
         };
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
-    /// <summary>
-    /// Build a row of colour swatches, ending in one that opens a full picker.
-    /// </summary>
-    /// <remarks>
-    /// The eight presets are the fast path and stay first. The picker exists
-    /// because a fixed palette is a wall — the format has always stored an
-    /// arbitrary hex string, so the only thing stopping a brand colour was this
-    /// row of buttons.
-    ///
-    /// <para>The picker button keeps the last colour chosen through it as its
-    /// own background, so using the same custom colour on a second node is one
-    /// click rather than a round trip through the dialogue.</para>
-    /// </remarks>
-    private void BuildSwatches(string host, string[] colours, Action<string> apply)
+    private void BuildColourField(string host, string label, Action<string> apply)
     {
-        var items = new List<Control>();
-
-        Button Swatch(string? colour, string tip) => new()
+        var field = new ColourField();
+        Avalonia.Automation.AutomationProperties.SetName(field, label);
+        field.Click += async (_, _) =>
         {
-            Width = 26, Height = 26, Margin = new Thickness(0, 0, 4, 4),
-            Padding = new Thickness(0),
-            Background = colour is null
-                ? Brushes.Transparent
-                : new SolidColorBrush(Color.Parse(colour)),
-            BorderBrush = new SolidColorBrush(Color.Parse("#999")),
-            BorderThickness = new Thickness(1),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            [ToolTip.TipProperty] = tip,
-        };
-
-        foreach (var c in colours)
-        {
-            var btn = Swatch(c, c);
-            var colour = c;
-            btn.Click += (_, _) => { apply(colour); _canvas.Focus(); };
-            items.Add(btn);
-        }
-
-        var custom = Swatch(null, "Pick any colour…");
-        custom.Content = new TextBlock
-        {
-            Text = "+",
-            FontSize = 15,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-
-        custom.Click += async (_, _) =>
-        {
-            // Seed with what the selected node already uses, so adjusting a
-            // shade is a nudge rather than starting from nothing.
-            var seed = _lastCustom[host]
-                       ?? (host == "FillSwatches" ? _canvas.Selected?.Fill : _canvas.Selected?.Stroke);
-
-            var chosen = await ColourPickerDialog.PickAsync(
-                this, host == "FillSwatches" ? "Fill colour" : "Outline colour", seed);
-
-            if (chosen is null) { _canvas.Focus(); return; }
-
-            _lastCustom[host] = chosen;
-            custom.Background = new SolidColorBrush(Color.Parse(chosen));
-            custom.Content = null;
-            ToolTip.SetTip(custom, $"{chosen} — click to reuse, or pick again from the menu");
-
+            var model = _canvas.Model;
+            var nodes = _canvas.Selection.ToArray();
+            var chosen = await ColourPickerDialog.PickAsync(this, label, field.Value, defaultValue: "");
+            if (chosen is null) return;
+            if (!ReferenceEquals(model, _canvas.Model) || !nodes.ToHashSet().SetEquals(_canvas.Selection))
+            { ShowInfo("Selection changed", "Choose the color again for the current selection. No color was changed."); return; }
+            if (nodes.All(n => (host == "FillSwatches" ? n.Fill : n.Stroke) == chosen)) return;
             apply(chosen);
-            _canvas.Focus();
+            SyncPanel();
         };
-
-        items.Add(custom);
-        this.FindControl<ItemsControl>(host)!.ItemsSource = items;
+        this.FindControl<ItemsControl>(host)!.ItemsSource = new[] { field };
     }
-
-    /// <summary>The last colour picked from each row's picker, for reuse.</summary>
-    private readonly Dictionary<string, string?> _lastCustom = new()
-    {
-        ["FillSwatches"] = null,
-        ["StrokeSwatches"] = null,
-    };
 
     private void LoadSource(string source, string? path)
     {
+        var capabilities = MerpeepsDocument.GetCapabilities(source);
+        DiagramModel? model = null;
+        GanttEvaluationContext? evaluationContext = null;
+        if (capabilities.CanEdit)
+        {
+            try
+            {
+                model = MerpeepsDocument.Load(source);
+                if (model.Gantt is not null)
+                {
+                    evaluationContext = EditorCanvas.CaptureGanttContext();
+                    _ = Merpeeps.Core.Layout.GanttDiagramLayout.Create(model, evaluationContext, EditorCanvas.MeasureDrawingText);
+                }
+                if (model.Wardley is not null) _ = Merpeeps.Core.Layout.StrategyDiagramLayouts.Wardley(model, EditorCanvas.MeasureDrawingText);
+                if (model.Ishikawa is not null) _ = Merpeeps.Core.Layout.StrategyDiagramLayouts.Ishikawa(model, EditorCanvas.MeasureDrawingText);
+                if (model.Cynefin is not null) _ = Merpeeps.Core.Layout.StrategyDiagramLayouts.Cynefin(model, EditorCanvas.MeasureDrawingText);
+                if (model.Venn is not null) _ = Merpeeps.Core.Layout.VennDiagramLayout.Create(model, EditorCanvas.MeasureDrawingText);
+                if (model.Railroad is not null) _ = Merpeeps.Core.Layout.RailroadDiagramLayout.Create(model, EditorCanvas.MeasureDrawingText);
+                if (model.Swimlane is not null) _ = Merpeeps.Core.Layout.SwimlaneDiagramLayout.Create(model, EditorCanvas.MeasureDrawingText);
+                if (model.UseCase is not null) _ = Merpeeps.Core.Layout.UseCaseDiagramLayout.Create(model, EditorCanvas.MeasureDrawingText);
+                if (model.AgentFlow is not null) _ = Merpeeps.Core.Layout.AgentFlowDiagramLayout.Create(model, EditorCanvas.MeasureDrawingText);
+                if (model.EventModeling is not null) _ = Merpeeps.Core.Layout.EventModelingLayout.Create(model, EditorCanvas.MeasureDrawingText);
+                if (model.Zen is not null) _ = Merpeeps.Core.Layout.ZenDiagramLayout.Create(model, EditorCanvas.MeasureDrawingText);
+            }
+            catch (FormatException error)
+            {
+                capabilities = capabilities with
+                {
+                    CanEdit = false, CanLayout = false, CanRenderNatively = false,
+                    Diagnostic = error.Message + " Source is preserved; open the original in a compatible editor.",
+                };
+            }
+            catch (SequenceNotEditableException error)
+            {
+                capabilities = capabilities with
+                {
+                    CanEdit = false, CanLayout = false, CanRenderNatively = false,
+                    Diagnostic = "Native sequence authoring is unavailable for this document:\n" +
+                        string.Join("\n", error.Result.Diagnostics.Select(d => $"{d.Code}: {d.Message}")),
+                };
+            }
+            catch (ChartNotEditableException error)
+            {
+                capabilities = capabilities with
+                {
+                    CanEdit = false, CanLayout = false, CanRenderNatively = false,
+                    Diagnostic = "Native chart editing is unavailable for this source:\n" +
+                        string.Join("\n", error.Result.Diagnostics.Select(d => $"{d.Code}: {d.Message}")),
+                };
+            }
+            catch (DataDiagramNotEditableException error)
+            {
+                capabilities = capabilities with
+                {
+                    CanEdit = false, CanLayout = false, CanRenderNatively = false,
+                    Diagnostic = "Native diagram editing is unavailable:\n" + string.Join("\n", error.Diagnostics.Select(d => d.Code + ": " + d.Message)),
+                };
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.Text.Json.JsonException or NotSupportedException)
+            {
+                capabilities = capabilities with
+                {
+                    CanEdit = false, CanLayout = false, CanRenderNatively = false,
+                    Diagnostic = "The native editor could not interpret this document. Source is preserved:\n" + error.Message,
+                };
+            }
+        }
         _source = source;
         _path = path;
         _dirty = false;
-        _canvas.SetModel(MerpeepsDocument.Load(source));
+        _capabilities = capabilities;
+        if (!capabilities.CanEdit) model = null;
+        if (model is null) _canvas.ClearModel();
+        else _canvas.SetModel(model, evaluationContext);
+        SyncClassWorkspace();
+        RefreshPalette();
+        RefreshOutline();
+        CloseGalleryForDocument();
         SyncEngineBox(_canvas.Model);
         SyncDiagramTheme();
         RefreshSource();
@@ -233,31 +261,51 @@ public partial class MainWindow : Window
 
     private async void OnOpen(object? sender, RoutedEventArgs e)
     {
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        if (_dirty || _classInspector?.HasPendingEdits == true)
         {
-            Title = "Open a mermaid diagram",
-            AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("Mermaid / Markdown")
-                    { Patterns = new[] { "*.mmd", "*.mermaid", "*.md" } },
-                FilePickerFileTypes.All,
-            },
-        });
-        if (files.Count == 0) return;
+            ShowNewGallery();
+            _newGallery!.RequestOpen();
+            return;
+        }
+        await PickDiagramAsync();
+    }
 
-        var file = files[0];
-        await using var stream = await file.OpenReadAsync();
-        using var reader = new StreamReader(stream);
-        LoadSource(await reader.ReadToEndAsync(), file.TryGetLocalPath());
+    private async Task PickDiagramAsync()
+    {
+        if (_openingDiagram) return;
+        _openingDiagram = true;
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Open a mermaid diagram",
+                AllowMultiple = false,
+                FileTypeFilter = new[]
+                {
+                    new FilePickerFileType("Mermaid / Markdown")
+                        { Patterns = new[] { "*.mmd", "*.mermaid", "*.md" } },
+                    FilePickerFileTypes.All,
+                },
+            });
+            if (files.Count == 0) return;
+
+            var file = files[0];
+            await using var stream = await file.OpenReadAsync();
+            using var reader = new StreamReader(stream);
+            LoadSource(await reader.ReadToEndAsync(), file.TryGetLocalPath());
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or FormatException)
+        {
+            ShowInfo("Could not open diagram", error.Message + "\n\nYour current diagram has not been replaced.");
+        }
+        finally { _openingDiagram = false; }
     }
 
     private async void OnSave(object? sender, RoutedEventArgs e)
     {
-        var model = _canvas.Model;
-        if (model is null) return;
-
-        var updated = Render(model);
+        if (!CanSaveCurrentDiagram()) return;
+        if (_capabilities is null) return;
+        var updated = CurrentSource;
 
         var path = _path;
         if (path is null)
@@ -287,7 +335,7 @@ public partial class MainWindow : Window
     /// never rewrites a line the user did not touch.
     /// </summary>
     private string Render(DiagramModel model) =>
-        StructureChanged(model)
+        model.AgentFlow is not null || model.EventModeling is not null || model.Zen is not null || model.Swimlane is not null || model.UseCase is not null || model.ClassOptions is not null || model.EntityOptions is not null || model.Sequence is not null || model.Chart is not null || model.Outline is not null || model.Temporal is not null || model.Packet is not null || model.Kanban is not null || model.Requirements is not null || model.GitDiagram is not null || model.Sankey is not null || model.Treemap is not null || model.Blocks is not null || model.Architecture is not null || model.C4 is not null || model.Gantt is not null || model.Wardley is not null || model.Ishikawa is not null || model.Cynefin is not null || model.Venn is not null || model.Railroad is not null || StructureChanged(model)
             ? MerpeepsDocument.Save(_source, model)
             : MerpeepsDocument.SavePositions(_source, model);
 
@@ -332,8 +380,16 @@ public partial class MainWindow : Window
         var choice = EditorLayouts.At(box.SelectedIndex);
 
         var engine = LayoutEngines.ById(choice.Id);
+        _canvas.CancelGraphDrag();
+        model.GroupLayouts.Clear();
+        model.RenderedGeometry = null; model.EdgeWaypoints.Clear();
         foreach (var n in model.Nodes) n.HasExplicitPosition = false;
-        engine.Apply(model, LayoutOptions.Default);
+        if (model.EntityOptions is not null && engine.Id == "layered")
+        {
+            model.LayoutEngine = engine.Id;
+            EntityDiagramLayout.Apply(model);
+        }
+        else engine.Apply(model, LayoutOptions.Default);
         foreach (var n in model.Nodes) n.HasExplicitPosition = true;
 
         model.LayoutEngine = engine.Id;
@@ -446,6 +502,14 @@ public partial class MainWindow : Window
 
     private void SyncPanel()
     {
+        if (_canvas.IsWorkflowDiagram || _canvas.IsOwnershipDiagram || _canvas.IsStrategyDiagram || _canvas.IsSetGrammarDiagram || _canvas.Model?.ClassOptions is not null || _canvas.Model?.EntityOptions is not null || _canvas.Model?.Sequence is not null || _canvas.Model?.Chart is not null || _canvas.Model?.Outline is not null || _canvas.Model?.Temporal is not null || _canvas.Model?.Packet is not null || _canvas.Model?.Kanban is not null || _canvas.Model?.Requirements is not null || _canvas.Model?.GitDiagram is not null || _canvas.Model?.Sankey is not null || _canvas.Model?.Treemap is not null || _canvas.Model?.Blocks is not null || _canvas.Model?.Architecture is not null || _canvas.Model?.C4 is not null || _canvas.Model?.Gantt is not null)
+        {
+            this.FindControl<StackPanel>("EdgeProperties")!.IsVisible = false;
+            this.FindControl<StackPanel>("NodeProperties")!.IsVisible = false;
+            _classInspector?.Refresh();
+            SyncArrangement();
+            return;
+        }
         _suppressPanelEvents = true;
         try
         {
@@ -455,9 +519,15 @@ public partial class MainWindow : Window
             // One or the other, never both: the canvas clears each when the
             // other is picked, so the pane can simply follow.
             this.FindControl<StackPanel>("EdgeProperties")!.IsVisible = edge is not null;
-            this.FindControl<StackPanel>("NodeProperties")!.IsVisible = edge is null;
+            this.FindControl<StackPanel>("NodeProperties")!.IsVisible = edge is null && n is not null;
+            this.FindControl<Border>("MetadataExplanation")!.IsVisible = false;
 
             var info = this.FindControl<TextBlock>("SelInfo")!;
+            if (_canvas.SelectedGroup is { } group)
+            {
+                info.Text = group.Title ?? group.Id;
+                return;
+            }
 
             if (edge is not null)
             {
@@ -471,14 +541,13 @@ public partial class MainWindow : Window
                 return;
             }
 
-            info.Text = _canvas.Selection.Count switch
-            {
-                0 => "Nothing selected",
-                1 => $"{n!.Id} — {n.Display}",
-                var c => $"{c} nodes selected",
-            };
+            info.Text = n is not null ? $"{n.Id} - {n.Display}"
+                : _canvas.SelectedObjectCount > 0 ? $"{_canvas.SelectedObjectCount} objects selected"
+                : "Select an object on the canvas to edit its properties.";
 
             if (n is null) return;
+            ((ColourField)Need<ItemsControl>("FillSwatches").Items[0]!).Value = n.Fill ?? "";
+            ((ColourField)Need<ItemsControl>("StrokeSwatches").Items[0]!).Value = n.Stroke ?? "";
 
             var shapeIdx = Array.FindIndex(ShapeChoices, c => c.Shape == n.Shape);
             if (shapeIdx >= 0)
@@ -491,7 +560,7 @@ public partial class MainWindow : Window
 
             this.FindControl<CheckBox>("DashedBox")!.IsChecked = n.Dashed;
         }
-        finally { _suppressPanelEvents = false; }
+        finally { _suppressPanelEvents = false; SyncArrangement(); }
     }
 
     /// <summary>
@@ -537,14 +606,82 @@ public partial class MainWindow : Window
     {
         var m = _canvas.Model;
         var h = _canvas.History;
-        var name = _path is null ? "(sample)" : Path.GetFileName(_path);
-        var stats = m is null ? "" : $" · {m.Nodes.Count} nodes, {m.Edges.Count} edges";
+        var name = _path is null ? (_source == Sample ? "(sample)" : "Untitled") : Path.GetFileName(_path);
+        Need<TextBlock>("DocumentTitle").Text = name + (_dirty ? " *" : "");
+        Need<TextBlock>("DocumentFamily").Text = MermaidDiagramCatalog.Families.FirstOrDefault(f => f.Dialects.Any(d => d.Directive == m?.Kind))?.DisplayName ?? m?.Kind ?? "Choose a diagram";
+        Need<Button>("DiagramSettingsButton").IsEnabled = Need<MenuItem>("MenuClassDiagram").IsVisible;
+        Need<Button>("ExportButton").IsEnabled = m is not null && _classInspector?.HasPendingEdits != true;
+        var stats = m?.AgentFlow is { } agents ? $" · {agents.Elements.Count} workflow elements" : m?.EventModeling is { } events ? $" · {events.Frames.Count} ordered timeframes"
+            : m?.Zen is { } zen ? $" · {zen.Participants.Count} participants, {ZenSemantics.Walk(zen.Statements).Count()} statements" : m?.Swimlane is { } lanes ? $" · {lanes.Groups.Count(g => g.ParentId is null)} lanes, {lanes.Nodes.Count} steps"
+            : m?.UseCase is { } cases ? $" · {cases.Nodes.Count} elements, {cases.Relationships.Count} UML relationships"
+            : m?.Venn is { } venn ? $" · {venn.Sets.Count} sets, {venn.Overlaps.Count} overlaps"
+            : m?.Railroad is { } railroad ? $" · {railroad.Rules.Count} grammar rules"
+            : m?.Wardley is { } map ? $" · {map.Components.Count} map components, {map.Links.Count} dependencies"
+            : m?.Ishikawa is { } fish ? $" · {fish.AllCauses.Count()} causes"
+            : m?.Cynefin is { } framework ? $" · {framework.Items.Count} domain items"
+            : m?.C4 is { } c4 ? $" · {c4.Elements.Count} C4 elements, {c4.Relationships.Count} relationships"
+            : m?.Gantt is { } gantt ? $" · {gantt.Tasks.Count} temporal tasks"
+            : m?.Blocks is { } blocks ? $" · {blocks.AllItems.Count()} grid items, {blocks.Connections.Count} connections"
+            : m?.Architecture is { } architecture ? $" · {architecture.Nodes.Count} services/junctions, {architecture.Groups.Count} groups"
+            : m?.Sankey is { } flow ? $" · {flow.Nodes.Count} flow nodes, {flow.Links.Count} flows"
+            : m?.Treemap is { } treemap ? $" · {treemap.Nodes.Count()} weighted nodes"
+            : m?.Requirements is { } requirements ? $" · {requirements.Items.Count} elements, {requirements.Relations.Count} relationships"
+            : m?.GitDiagram is { } git ? $" · {git.Replay().Commits.Count} diagram commits"
+            : m?.Packet is { } packet ? $" · {packet.Fields.Count} packet fields"
+            : m?.Kanban is { } board ? $" · {board.Columns.Count} columns, {board.Columns.Sum(c => c.Cards.Count)} cards"
+            : m?.Outline is { } outline ? $" · {outline.Nodes.Count()} outline nodes"
+            : m?.Temporal is { } temporal ? temporal.Family == TemporalFamily.Timeline
+                ? $" · {temporal.Periods.Count} periods, {temporal.Periods.Sum(p => p.Events.Count)} events"
+                : $" · {temporal.Tasks.Count} tasks"
+            : m?.Chart is { } chart
+            ? chart switch
+            {
+                PieChart pie => $" · {pie.Slices.Count} slices",
+                QuadrantChart quadrant => $" · {quadrant.Points.Count} data points",
+                XyChart xy => $" · {xy.Series.Count} series, {xy.Series.Sum(s => s.Values.Count)} values",
+                RadarChart radar => $" · {radar.Axes.Count} axes, {radar.Curves.Count} curves",
+                _ => "",
+            }
+            : m?.Sequence is { } sequence
+            ? $" · {sequence.Participants.Count} participants, {SequenceDiagramModel.Walk(sequence.Statements).OfType<SequenceMessage>().Count()} messages"
+            : m is null ? "" : $" · {m.Nodes.Count} nodes, {m.Edges.Count} edges";
+        if (_capabilities is { CanEdit: false })
+            stats = " · source only (native editing unavailable)";
         var undo = h?.NextUndo is { } u ? $" · undo: {u}" : "";
+        var pending = _classInspector?.HasPendingEdits == true;
+        var unconnectedStateMarker = HasUnconnectedStateMarker;
         this.FindControl<TextBlock>("StatusText")!.Text =
-            $"{name}{(_dirty ? " *" : "")}{stats}{undo}";
+            $"{name}{(_dirty ? " *" : "")}{stats}{undo}{(pending ? " · unapplied inspector edits" : "")}{(unconnectedStateMarker ? " · connect the start/end marker before saving" : "")}";
 
         this.FindControl<Button>("UndoBtn")!.IsEnabled = h?.CanUndo ?? false;
         this.FindControl<Button>("RedoBtn")!.IsEnabled = h?.CanRedo ?? false;
+
+        var native = m is not null;
+        _canvas.IsEnabled = native;
+        foreach (var control in new[] { "SaveBtn", "RelayoutBtn", "EngineBox",
+                     "DiagramThemeBox", "NodePane", "PropertyPane" })
+            Need<Control>(control).IsEnabled = native;
+        foreach (var menu in new[] { "MenuSave", "MenuExportSvg", "MenuRelayout",
+                     "MenuEngines", "MenuDiagramTheme", "MenuSelectAll", "MenuDelete", "MenuRename" })
+            Need<MenuItem>(menu).IsEnabled = native;
+        Need<Button>("SaveBtn").IsEnabled = native && !pending && !unconnectedStateMarker;
+        Need<MenuItem>("MenuSave").IsEnabled = native && !pending && !unconnectedStateMarker;
+        foreach (var menu in new[] { "MenuSaveAs", "MenuExport", "MenuExportBaked" })
+            Need<MenuItem>(menu).IsEnabled = !pending && !unconnectedStateMarker;
+        Need<MenuItem>("MenuExportSvg").IsEnabled = native && !pending && !unconnectedStateMarker;
+        if (_canvas.IsWorkflowDiagram || _canvas.IsOwnershipDiagram || _canvas.IsStrategyDiagram || _canvas.IsSetGrammarDiagram || m?.Sequence is not null || m?.Chart is not null || m?.Outline is not null || m?.Temporal is not null || m?.Packet is not null || m?.Kanban is not null || m?.Requirements is not null || m?.GitDiagram is not null || m?.Sankey is not null || m?.Treemap is not null || m?.Blocks is not null || m?.Architecture is not null || m?.C4 is not null || m?.Gantt is not null)
+        {
+            Need<MenuItem>("MenuRelayout").IsEnabled = false;
+            Need<MenuItem>("MenuEngines").IsEnabled = false;
+            Need<MenuItem>("MenuSelectAll").IsEnabled = false;
+        }
+
+        var unsupported = _capabilities is { CanEdit: false };
+        Need<Border>("CapabilityBanner").IsVisible = unsupported;
+        Need<TextBlock>("CapabilityText").Text = unsupported
+            ? _capabilities!.Diagnostic +
+              "\nSource is kept unchanged. View > Show real mermaid opens the reference preview; Save As can copy the source."
+            : "";
+        SyncArrangement();
     }
 }
-

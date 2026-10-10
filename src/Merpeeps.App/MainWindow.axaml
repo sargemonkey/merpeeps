@@ -3,23 +3,32 @@
         xmlns:local="using:Merpeeps.App"
         xmlns:model="using:Merpeeps.Core.Model"
         x:Class="Merpeeps.App.MainWindow"
-        Width="1560" Height="920"
+        Width="1560" Height="920" MinWidth="820" MinHeight="560"
         Background="{DynamicResource ThemeBackgroundBrush}"
-        Title="Merpeeps — visual editor for Mermaid">
-  <DockPanel>
+        Icon="{x:Static local:ProductBrand.WindowIcon}"
+        Title="{x:Static local:ProductBrand.WindowTitle}">
+  <Grid>
+  <DockPanel Name="EditorWorkspace">
 
-    <!-- Menu. Everything here is also on the toolbar or a shortcut; the menu
-         exists so nothing is discoverable only by memorising a key. -->
-    <Menu DockPanel.Dock="Top" Name="MainMenu">
+    <DockPanel DockPanel.Dock="Top" Margin="12,4">
+    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8" Margin="0,0,20,0" VerticalAlignment="Center">
+      <Image Name="ProductIcon" Source="{x:Static local:ProductBrand.AppIcon}" Width="28" Height="28"
+             AutomationProperties.Name="Merpie app icon" IsHitTestVisible="False"/>
+      <TextBlock Name="ProductName" Text="{x:Static local:ProductBrand.Name}" Classes="display" FontSize="18"
+                 Foreground="{DynamicResource AmplifyAccentBrush}" VerticalAlignment="Center"/>
+    </StackPanel>
+    <Button DockPanel.Dock="Right" Name="ThemeToggle" Classes="ghost icon-action"
+            AutomationProperties.Name="Switch app theme" ToolTip.Tip="Switch app theme"><local:UiIcon Glyph="Moon"/></Button>
+    <Menu Name="MainMenu">
       <MenuItem Header="_File">
-        <MenuItem Name="MenuNew"    Header="_New"      InputGesture="Ctrl+N"/>
+        <local:CommandMenuItem Name="MenuNew" Header="_New diagram…" InputGesture="Ctrl+N"/>
         <MenuItem Name="MenuOpen"   Header="_Open…"    InputGesture="Ctrl+O"/>
         <Separator/>
         <MenuItem Name="MenuSave"   Header="_Save"     InputGesture="Ctrl+S"/>
         <MenuItem Name="MenuSaveAs" Header="Save _As…" InputGesture="Ctrl+Shift+S"/>
         <Separator/>
         <MenuItem Name="MenuExport" Header="_Export plain mermaid…"
-                  ToolTip.Tip="Write the diagram with no Merpeeps metadata — the colours and icons go too"/>
+                  ToolTip.Tip="Write the diagram with no editor metadata — the colours and icons go too"/>
         <MenuItem Name="MenuExportBaked" Header="Export with styling _baked in…"
                   ToolTip.Tip="Write plain mermaid that keeps the colours, as native style statements every renderer understands. Positions and icons cannot be expressed in mermaid syntax and are dropped."/>
         <MenuItem Name="MenuExportSvg" Header="Export as S_VG…"
@@ -38,19 +47,34 @@
         <MenuItem Name="MenuRename"    Header="Re_name"    InputGesture="F2"/>
       </MenuItem>
 
+      <MenuItem Name="MenuClassDiagram" Header="_Diagram" IsVisible="False">
+        <local:CommandMenuItem Name="MenuClassAdd" Header="Add _class…"/>
+        <local:CommandMenuItem Name="MenuClassNote" Header="Add diagram _note…"/>
+        <Separator/>
+        <local:CommandMenuItem Name="MenuClassNamespaces" Header="_Namespaces…"/>
+        <local:CommandMenuItem Name="MenuClassDisplay" Header="_Display options…"/>
+        <local:CommandMenuItem Name="MenuClassNavigate" Header="_Select element…"/>
+        <Separator Name="DiagramSettingsSeparator" IsVisible="False"/>
+        <local:CommandMenuItem Name="MenuDiagramTitle" Header="_Title…" IsVisible="False"/>
+        <local:CommandMenuItem Name="MenuQuadrantLabels" Header="Axes and quadrant _labels…" IsVisible="False"/>
+        <local:CommandMenuItem Name="MenuArchitectureAlignment" Header="_Align row / column…" IsVisible="False"/>
+        <local:CommandMenuItem Name="MenuGanttReference" Header="_Refresh reference time" IsVisible="False"/>
+        <local:CommandMenuItem Name="MenuIshikawaProblem" Header="Edit _problem…" IsVisible="False"/>
+      </MenuItem>
+
       <MenuItem Header="_View">
         <MenuItem Name="MenuZoomIn"  Header="Zoom _In"       InputGesture="Ctrl+OemPlus"/>
         <MenuItem Name="MenuZoomOut" Header="Zoom _Out"      InputGesture="Ctrl+OemMinus"/>
         <MenuItem Name="MenuZoom100" Header="Actual Si_ze"   InputGesture="Ctrl+D0"/>
         <MenuItem Name="MenuFit"     Header="_Fit to window" InputGesture="Ctrl+F"/>
         <Separator/>
-        <MenuItem Name="MenuShowStyling" Header="Show Merpeeps _styling"
+        <MenuItem Name="MenuShowStyling" Header="Show Merpie _styling"
                   ToggleType="CheckBox" IsChecked="True"
                   ToolTip.Tip="Off shows what a stock mermaid renderer would draw"/>
-        <MenuItem Name="MenuShowNodes"  Header="Show shape _palette"
+        <MenuItem Name="MenuShowNodes"  Header="Show item _palette"
                   ToggleType="CheckBox" IsChecked="True"/>
         <MenuItem Name="MenuShowSource" Header="Show so_urce pane"
-                  ToggleType="CheckBox" IsChecked="True"/>
+                  ToggleType="CheckBox" IsChecked="False"/>
         <MenuItem Name="MenuShowReference" Header="Show _real mermaid"
                   ToggleType="CheckBox" IsChecked="False"
                   ToolTip.Tip="Render the same diagram with the upstream renderer, side by side"/>
@@ -66,6 +90,11 @@
       </MenuItem>
 
       <MenuItem Header="_Layout">
+        <MenuItem Name="MenuAlignSelection" Header="_Align selection"
+                  ToolTip.Tip="Shift-click objects or drag a selection box. Align uses the selection's outer bounds."/>
+        <MenuItem Name="MenuDistributeSelection" Header="_Distribute selection"
+                  ToolTip.Tip="Select three or more objects. Keep the two end objects fixed and equalize the gaps."/>
+        <Separator/>
         <MenuItem Name="MenuRelayout" Header="_Re-layout now" InputGesture="Ctrl+R"/>
         <Separator/>
         <MenuItem Name="MenuEngines"  Header="_Engine"/>
@@ -73,38 +102,56 @@
 
       <MenuItem Header="_Help">
         <MenuItem Name="MenuShortcuts" Header="_Keyboard shortcuts"/>
-        <MenuItem Name="MenuAbout"     Header="_About Merpeeps"/>
+        <MenuItem Name="MenuAbout"     Header="_About Merpie"/>
       </MenuItem>
     </Menu>
+    </DockPanel>
 
-    <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeControlMidBrush}"
-            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
-            BorderThickness="0,0,0,1" Padding="8,6">
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <Button Name="OpenBtn"   Content="Open"/>
-        <Button Name="SaveBtn"   Content="Save"/>
-        <Rectangle Width="1" Fill="{DynamicResource ThemeBorderLowBrush}" Margin="4,2"/>
-        <Button Name="UndoBtn"   Content="Undo"/>
-        <Button Name="RedoBtn"   Content="Redo"/>
-        <Rectangle Width="1" Fill="{DynamicResource ThemeBorderLowBrush}" Margin="4,2"/>
-        <Button Name="FitBtn"    Content="Fit"/>
-        <ToggleButton Name="HandToggle" Content="✋ Pan"
-                      ToolTip.Tip="Pan with a left-drag (H) · Esc or V returns to selecting · right-drag and space-drag always pan"/>
-        <Button Name="RelayoutBtn" Content="Re-layout"/>
-        <ComboBox Name="EngineBox" Width="168" Margin="4,0,0,0"
+    <Border DockPanel.Dock="Top" Background="{DynamicResource AmplifySurfaceBrush}"
+            BorderBrush="{DynamicResource AmplifyBorderBrush}"
+            BorderThickness="0,1" Padding="12,10">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+        <Button Name="DocumentButton" Classes="ghost" Width="178" HorizontalContentAlignment="Left"
+                AutomationProperties.Name="Choose diagram type" ToolTip.Tip="New diagram or open an existing file">
+          <StackPanel Spacing="2">
+            <TextBlock Name="DocumentTitle" Text="Untitled" FontWeight="SemiBold" MaxWidth="154" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Name="DocumentFamily" Classes="muted" FontSize="11" Text="Choose a diagram"/>
+          </StackPanel>
+        </Button>
+        <Button Name="OpenBtn" Classes="ghost icon-action" AutomationProperties.Name="Open" ToolTip.Tip="Open (Ctrl+O)"><local:UiIcon Glyph="Open"/></Button>
+        <Button Name="SaveBtn" Classes="ghost icon-action" AutomationProperties.Name="Save" ToolTip.Tip="Save (Ctrl+S)"><local:UiIcon Glyph="Save"/></Button>
+        <Rectangle Width="1" Fill="{DynamicResource AmplifyBorderBrush}" Margin="6,8"/>
+        <Button Name="UndoBtn" Classes="ghost icon-action" AutomationProperties.Name="Undo" ToolTip.Tip="Undo (Ctrl+Z)"><local:UiIcon Glyph="Undo"/></Button>
+        <Button Name="RedoBtn" Classes="ghost icon-action" AutomationProperties.Name="Redo" ToolTip.Tip="Redo (Ctrl+Shift+Z)"><local:UiIcon Glyph="Redo"/></Button>
+        <Rectangle Width="1" Fill="{DynamicResource AmplifyBorderBrush}" Margin="6,8"/>
+        <ToggleButton Name="SelectToggle" Classes="ghost icon-action" IsChecked="True"
+                      AutomationProperties.Name="Select tool" ToolTip.Tip="Select (V)"><local:UiIcon Glyph="Select"/></ToggleButton>
+        <ToggleButton Name="HandToggle" Classes="ghost icon-action"
+                      AutomationProperties.Name="Pan tool" ToolTip.Tip="Pan (H) · Esc or V returns to selecting"><local:UiIcon Glyph="Pan"/></ToggleButton>
+        <Button Name="FitBtn" Classes="ghost icon-action" AutomationProperties.Name="Fit" ToolTip.Tip="Fit to window (Ctrl+F)"><local:UiIcon Glyph="Fit"/></Button>
+        <Button Name="RelayoutBtn" Classes="ghost icon-action" AutomationProperties.Name="Re-layout" ToolTip.Tip="Re-layout"><local:UiIcon Glyph="Layout"/></Button>
+        <ComboBox Name="EngineBox" Width="144" Margin="6,0"
                   VerticalAlignment="Center"
                   ToolTip.Tip="Which algorithm arranges the nodes"/>
-        <Rectangle Width="1" Fill="{DynamicResource ThemeBorderLowBrush}" Margin="4,2"/>
-        <TextBlock Text="Theme" VerticalAlignment="Center" Opacity="0.7"/>
-        <ComboBox Name="DiagramThemeBox" Width="118"
+      </StackPanel>
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+        <ComboBox Name="DiagramThemeBox" Width="110"
                   VerticalAlignment="Center"
                   ToolTip.Tip="Mermaid's own theme, stored in the file — every renderer honours it"/>
-        <Rectangle Width="1" Fill="{DynamicResource ThemeBorderLowBrush}" Margin="4,2"/>
-        <ToggleButton Name="StylingToggle" Content="Merpeeps styling" IsChecked="True"
-                      ToolTip.Tip="Off shows what a stock mermaid renderer would draw"/>
-        <TextBlock Name="StatusText" VerticalAlignment="Center"
-                   Margin="12,0,0,0" Opacity="0.7"/>
+        <ToggleButton Name="StylingToggle" Classes="ghost icon-action" IsChecked="True"
+                      AutomationProperties.Name="Merpie styling" ToolTip.Tip="Show Merpie styling"><local:UiIcon Glyph="Palette"/></ToggleButton>
+        <Button Name="DiagramSettingsButton" Classes="ghost icon-action"
+                AutomationProperties.Name="Diagram settings" ToolTip.Tip="Diagram settings"><local:UiIcon Glyph="Settings"/></Button>
+        <Button Name="ExportButton" Classes="primary" Content="Export SVG" ToolTip.Tip="Export as SVG"/>
       </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border Name="CapabilityBanner" DockPanel.Dock="Top" IsVisible="False"
+            Background="{DynamicResource ThemeControlMidBrush}" Padding="12,8"
+            BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="0,0,0,1">
+      <TextBlock Name="CapabilityText" TextWrapping="Wrap"/>
     </Border>
 
     <Border DockPanel.Dock="Bottom"
@@ -114,43 +161,68 @@
       <!-- Text is set from MainWindow.CanvasHint at startup. Left empty here
            because it is also restored when the styling toggle flips, and two
            copies of the same sentence had already drifted apart once. -->
-      <TextBlock Name="HintText" Opacity="0.65" FontSize="11"/>
+      <DockPanel LastChildFill="True">
+        <ToggleButton DockPanel.Dock="Right" Name="SourceToggle" Content="Source"
+                      IsChecked="False" Margin="12,0,0,0" Padding="10,4"
+                      AutomationProperties.Name="Show source pane"
+                      ToolTip.Tip="Show or collapse the generated Mermaid source"/>
+        <Button DockPanel.Dock="Left" Classes="ghost icon-action" AutomationProperties.Name="Canvas help">
+          <local:UiIcon Glyph="Info"/>
+          <ToolTip.Tip><TextBlock Name="HintText" MaxWidth="390" TextWrapping="Wrap"/></ToolTip.Tip>
+        </Button>
+        <TextBlock Name="StatusText" Classes="muted" FontSize="11" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" Margin="8,0"/>
+      </DockPanel>
     </Border>
 
-    <Grid ColumnDefinitions="220,Auto,*,Auto,250,Auto,360">
+    <Grid Name="WorkspaceGrid" ColumnDefinitions="80,Auto,*,Auto,288,0,0">
 
       <!-- Shape palette. A stencil per collection: pick "Database" and get a
            cylinder with a database icon and a colour, not a bare rectangle you
            then configure three times. -->
       <DockPanel Grid.Column="0" Name="NodePane"
                  Background="{DynamicResource ThemeBackgroundBrush}">
-        <TextBlock DockPanel.Dock="Top" Text="Shapes" Margin="10,10,10,4"
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="2" Margin="6,10,6,8">
+          <ToggleButton Name="ItemsToggle" Classes="ghost icon-action" IsChecked="True"
+                        AutomationProperties.Name="Creation tools" ToolTip.Tip="Creation tools"><local:UiIcon Glyph="Add"/></ToggleButton>
+          <ToggleButton Name="OutlineToggle" Classes="ghost icon-action"
+                        AutomationProperties.Name="Diagram outline" ToolTip.Tip="Diagram outline"><local:UiIcon Glyph="Layers"/></ToggleButton>
+        </StackPanel>
+        <TextBlock DockPanel.Dock="Top" Name="PaletteTitle" Text="Flowchart shapes" IsVisible="False" Margin="12,12,12,4"
+                   TextWrapping="Wrap"
                    FontWeight="SemiBold"/>
-        <ComboBox DockPanel.Dock="Top" Name="CollectionBox" Margin="10,0,10,6"
-                  HorizontalAlignment="Stretch"
-                  ToolTip.Tip="Which set of shapes to show"/>
-        <TextBlock DockPanel.Dock="Bottom" Name="PaletteHint" Margin="10,4,10,10"
+        <TextBlock DockPanel.Dock="Top" Name="PaletteTypeHint" IsVisible="False" Margin="12,0,12,12"
+                   Text="Tools for this flowchart. File > New chooses a different diagram type."
+                   TextWrapping="Wrap" FontSize="11"/>
+        <TextBlock DockPanel.Dock="Bottom" Name="PaletteHint" IsVisible="False" Margin="10,4,10,10"
                    FontSize="11" Opacity="0.6" TextWrapping="Wrap"
                    Text="Double-click a shape to add it, or drag it onto the canvas."/>
         <!-- x:DataType is required, not decoration: this project builds with
              AvaloniaUseCompiledBindingsByDefault, so a binding with no declared
              type cannot be compiled — and an unloadable XAML element does not
              throw, it hangs application startup. -->
-        <ListBox Name="PaletteList" Margin="4,0,4,0"
+        <Grid Name="PaletteContent">
+        <ScrollViewer Name="FamilyPaletteScroller" IsVisible="False"
+                      HorizontalScrollBarVisibility="Disabled">
+          <Border Name="FamilyPaletteHost" Margin="8,2,8,12"/>
+        </ScrollViewer>
+        <ListBox Name="PaletteList" Classes="palette-list" Margin="0"
                  Background="Transparent" BorderThickness="0">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="model:PaletteItem">
               <!-- Picture first, then the name. A thumbnail is not a label:
                    "Preparation" and "Asymmetric" mean nothing until you have
                    seen them, and the name is what you look for once you have. -->
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <local:ShapePreview Item="{Binding}" Width="40" Height="26"
-                                    VerticalAlignment="Center"/>
-                <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
-              </StackPanel>
+              <local:ShapePreview Item="{Binding}" Width="46" Height="32"
+                                  ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}"
+                                  VerticalAlignment="Center"/>
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>
+        <ScrollViewer Name="OutlineScroller" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Name="OutlineItems" Spacing="4" Margin="8"/>
+        </ScrollViewer>
+        </Grid>
       </DockPanel>
 
       <GridSplitter Grid.Column="1" Width="4"
@@ -183,10 +255,20 @@
 
       <ScrollViewer Grid.Column="4" Name="PropertyPane"
                     Background="{DynamicResource ThemeBackgroundBrush}">
-        <StackPanel Margin="10" Spacing="10">
-          <TextBlock Text="Selection" FontWeight="SemiBold"/>
+        <StackPanel Name="PropertyStack" Margin="12" Spacing="8">
+          <Border Name="ArrangementPanel" IsVisible="False" Padding="0,0,0,12"
+                  BorderThickness="0,0,0,1" BorderBrush="{DynamicResource AmplifyBorderBrush}">
+            <StackPanel Spacing="8">
+              <TextBlock Name="ArrangementSelectionCount" FontWeight="SemiBold"/>
+              <StackPanel Name="AlignmentActions" Orientation="Horizontal" Spacing="4"/>
+              <StackPanel Name="DistributionActions" Orientation="Horizontal" Spacing="4"/>
+            </StackPanel>
+          </Border>
+          <Border Name="ClassInspectorHost" IsVisible="False"/>
+          <TextBlock Text="Properties" FontWeight="SemiBold"/>
           <TextBlock Name="SelInfo" Opacity="0.7" FontSize="11"
-                     Text="Nothing selected"/>
+                     Text="Select an object on the canvas to edit its properties."
+                     TextWrapping="Wrap"/>
 
           <!-- Link properties. Shown instead of the node ones, not alongside:
                the two support different operations, and a pane offering an icon
@@ -205,7 +287,7 @@
                     HorizontalAlignment="Stretch"/>
           </StackPanel>
 
-          <StackPanel Name="NodeProperties" Spacing="10">
+          <StackPanel Name="NodeProperties" Spacing="10" IsVisible="False">
             <TextBlock Text="Shape" Opacity="0.7" FontSize="11"/>
             <ComboBox Name="ShapeBox" HorizontalAlignment="Stretch" SelectedIndex="0"/>
 
@@ -215,14 +297,14 @@
             <TextBlock Text="Fill" Opacity="0.7" FontSize="11"/>
             <ItemsControl Name="FillSwatches">
               <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
             </ItemsControl>
 
             <TextBlock Text="Outline" Opacity="0.7" FontSize="11"/>
             <ItemsControl Name="StrokeSwatches">
               <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
             </ItemsControl>
 
@@ -231,11 +313,11 @@
                     HorizontalAlignment="Stretch"/>
           </StackPanel>
 
-          <Border Background="{DynamicResource ThemeControlMidBrush}"
+          <Border Name="MetadataExplanation" IsVisible="False" Background="{DynamicResource ThemeControlMidBrush}"
                   BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                   BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,6,0,0">
             <TextBlock TextWrapping="Wrap" FontSize="11" Opacity="0.8">
-              Styling and icons live in the Merpeeps block, not the diagram body — a
+              Styling and icons live in the x-merpeeps block, not the diagram body — a
               stock mermaid renderer ignores them and still draws a correct
               plain diagram.
             </TextBlock>
@@ -244,17 +326,22 @@
       </ScrollViewer>
 
       <GridSplitter Grid.Column="5" Width="4"
+                    IsVisible="False"
                     Background="{DynamicResource ThemeBorderLowBrush}"/>
 
       <DockPanel Grid.Column="6" Name="SourcePane"
+                 IsVisible="False"
                  Background="{DynamicResource ThemeBackgroundBrush}">
-        <TextBlock DockPanel.Dock="Top" Text="Source (body + Merpeeps)" Margin="8,8,8,4"
+        <TextBlock DockPanel.Dock="Top" Text="Source (body + metadata)" Margin="8,8,8,4"
                    FontWeight="SemiBold"/>
         <TextBox Name="SourceBox" AcceptsReturn="True" IsReadOnly="True"
-                 FontFamily="Cascadia Mono,Consolas,monospace" FontSize="11"
+                 FontFamily="{StaticResource AmplifyMonoFont}" FontSize="12"
                  TextWrapping="NoWrap" Margin="8,0,8,8"
                  VerticalContentAlignment="Top"/>
       </DockPanel>
     </Grid>
   </DockPanel>
+  <Border Name="NewDiagramHost" IsVisible="False"
+          Background="{DynamicResource ThemeBackgroundBrush}"/>
+  </Grid>
 </Window>

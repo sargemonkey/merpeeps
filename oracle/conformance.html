@@ -8,6 +8,8 @@ import mermaid from './node_modules/mermaid/dist/mermaid.esm.mjs?c=1';
 import { parse, serialise, inject, bodyOf, split } from './merpeeps.mjs?c=1';
 
 const samples = await (await fetch('./samples.json?c=1')).json();
+const { version } = await (await fetch('./node_modules/mermaid/package.json')).json();
+if (version !== '12.0.0') throw new Error(`Expected Mermaid 12.0.0, found ${version}`);
 mermaid.initialize({ startOnLoad: false, suppressErrorRendering: true });
 
 // Extension payload deliberately full of distinctive, greppable tokens.
@@ -107,7 +109,7 @@ for (const r of renderable) {
   }
 }
 window.__CONF__ = {
-  mermaid: '11.16.1',
+  mermaid: version,
   totalSamples: results.length,
   renderable: renderable.length,
   notRenderable: results.filter(r => !r.rendered).map(r => r.type),
